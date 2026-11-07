@@ -411,7 +411,8 @@ body{font-size:14px}.app{grid-template-columns:228px minmax(0,1fr)}
   <section class="card workflow-card" id="ingest-step" aria-labelledby="ingest-step-title"><span class="eyebrow">01 / INGEST</span><h3 id="ingest-step-title">Bring your data together</h3>
     <p>Upload a synthetic CSV from DoorDash, Uber Eats, Grubhub, Square or your suppliers. Use <code>demo_data/golden.csv</code> for a complete example. Missing costs stay unknown until reviewed.</p>
     <label class="upload-zone" id="demoUpload" for="demoFile"><span class="upload-plus" aria-hidden="true">+</span><b>Choose a CSV to get started</b><span>Platform exports or normalized financial records · Up to 4 MiB</span></label>
-    <input id="demoFile" type="file" accept=".csv,text/csv">
+    <input id="demoFile" type="file" accept=".csv,text/csv" aria-describedby="demoFileStatus">
+    <p id="demoFileStatus" role="status" aria-live="polite" style="overflow-wrap:anywhere">No CSV selected.</p>
     <div class="row" style="flex-wrap:wrap;margin-top:12px"><button class="btn ghost sm" type="button" id="demoTemplate">Download CSV template</button><button class="btn link sm" data-go="sources" type="button">Unfamiliar payout columns? Use Connections</button></div>
     <p class="note" style="margin-top:8px">Comma, semicolon or tab-separated CSV · UTF-8 or BOM-marked UTF-16. Imports update this workspace only.</p>
     <div id="demoImportReport" aria-live="polite"></div>
@@ -531,6 +532,7 @@ body{font-size:14px}.app{grid-template-columns:228px minmax(0,1fr)}
           <div class="row"><span class="btn ghost sm">Choose CSV files</span><span class="note" id="csvNote"></span></div>
           <input type="file" id="csvFile" accept=".csv,text/csv" multiple hidden>
         </label>
+        <p id="csvFileStatus" role="status" aria-live="polite" style="padding:0 24px;overflow-wrap:anywhere">No CSV selected.</p>
         <div id="csvResult"></div>
         <div class="tbl-wrap"><table id="importTable"></table></div>
       </div>
@@ -967,10 +969,15 @@ function renderImports(){
   if($('#sqSync')){$('#sqSync').onclick=()=>run('/api/square/sync');$('#sqSeed').onclick=()=>reviewSeed($('#sqSeed'))}
 }
 async function importFiles(files){
-  if(!BACKEND.on){toast('Run server.py to import real files');return}
+  if(!files.length)return;
+  const selected=files.map(file=>file.name).join(', ');
+  $('#csvFileStatus').textContent='Selected: '+selected;
+  if(!BACKEND.on){$('#csvFileStatus').textContent='Selected: '+selected+' · Start server.py to import.';toast('Run server.py to import real files');return}
+  $('#csvFileStatus').textContent='Importing: '+selected;
   const out=[];$('#csvResult').innerHTML='<p class="pad typing" style="padding-top:0">Importing…</p>';
   for(const f of files){try{const text=await readCsvFile(f);const r=await apiFetch('/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,filename:f.name})});const j=await r.json();if(!r.ok||j.error)throw new Error(j.error||'Import failed');out.push(`<div class="callout"><b>${esc(f.name)}</b><span>${esc(j.format)}${j.channel?' · '+esc(j.channel):''} · columns mapped by ${esc(j.mapped_by)} · ${j.new_rows} new rows, ${j.duplicates_skipped} already in your books${j.redacted?` · ${j.redacted} personal fields removed`:''}</span>${j.mapped_by!=='known format'?`<span class="mono note" style="font-size:12px">${esc(Object.entries(j.mapping).map(([k,v])=>v+' → '+k).join('   '))}</span>`:''}</div>`)}
     catch(e){out.push(`<div class="callout"><b>${esc(f.name)}</b><span>Couldn't import: ${esc(e.message)}</span></div>`)}}
+  $('#csvFileStatus').textContent='Processed: '+selected+' · See results below.';
   $('#csvResult').innerHTML=`<div class="pad" style="padding-top:0;display:grid;gap:10px">${out.join('')}</div>`;
   await loadBackend();recompute();go('sources');
 }
@@ -1350,15 +1357,19 @@ async function refresh(){
 }
 async function importFile(file){
   if(!file)return;if(busy){el('demoStatus').textContent='Wait for the current operation to finish, then choose or drop your CSV again.';return}
+  el('demoFileStatus').textContent='Reading: '+file.name;
+  el('demoUpload').querySelector('b').textContent='Choose another CSV';
   await task(el('demoFile'),async()=>{
     const source=await readCsvFile(file);
+    el('demoFileStatus').textContent='Importing: '+file.name;
     state=await request('import',{text:source,filename:file.name});clear('demoGuru');clear('demoDispute');render();
     const result=state.last_import;
     if(result?.rejected_rows){focusResult(el('demoImportReport'));return (result.transactions_added||result.documents_added?'Import completed with row errors. ':'No records added. ')+result.rejected_rows+' rejected rows; review the import report.'}
     return 'Import complete · '+(result?.transactions_added||0)+' transactions added · '+(result?.documents_added||0)+' invoice observations added · '+state.duplicates_skipped+' duplicates skipped';
   });
-  el('demoFile').value='';
+  el('demoFileStatus').textContent=file.name+' · '+(el('demoError').textContent?'Import failed: '+el('demoError').textContent:el('demoStatus').textContent);
 }
+
 document.querySelectorAll('.workflow-nav a').forEach(link=>link.onclick=event=>{event.preventDefault();const target=document.querySelector(link.getAttribute('href'));target.scrollIntoView({block:'start',behavior:'instant'});target.tabIndex=-1;target.focus({preventScroll:true})});
 window.refreshPrototype=()=>task(null,refresh);
 el('demoLoad').onclick=()=>{
@@ -1371,6 +1382,7 @@ el('demoTemplate').onclick=()=>{
   const csv='id,source,date,channel,gross_sales,refunds,restaurant_promotions,platform_promotions,commissions,other_platform_fees,food_costs,other_variable_costs,contract_rate,contract_basis,promotion_approved\nEXAMPLE-001,synthetic-template:2,2026-10-26,In-store,100,0,0,0,0,0,30,5,0,gross_sales,true\n';
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),link=document.createElement('a');link.href=url;link.download='profitshield-synthetic-template.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
+el('demoFile').onclick=()=>{el('demoFile').value=''};
 el('demoFile').onchange=()=>importFile(el('demoFile').files[0]);
 const zone=el('demoUpload');
 zone.ondragover=event=>{event.preventDefault();zone.classList.add('over')};zone.ondragleave=()=>zone.classList.remove('over');zone.ondrop=event=>{event.preventDefault();zone.classList.remove('over');importFile(event.dataTransfer.files[0])};

@@ -46,6 +46,9 @@ with tempfile.TemporaryDirectory() as tmp,patch.object(server,'DB_PATH',Path(tmp
             expect(page.locator('#demoBaseline')).to_contain_text('$4,700.00')
             expect(page.locator('#demoStatus')).to_contain_text('4 transactions added')
             expect(page.locator('#demoError')).to_be_empty()
+            expect(page.locator('#demoFileStatus')).to_contain_text('excel.csv · Import complete')
+            expect(page.locator('#demoUpload')).to_contain_text('Choose another CSV')
+            assert page.locator('#demoFile').evaluate('input=>input.files[0].name')=='excel.csv'
             print('Excel semicolon/preamble/UTF-16 upload through picker: PASS')
             # Reupload the same logical data with padded/capitalized normalized headers.
             out=io.StringIO();records=list(csv.reader(io.StringIO(golden)));records[0]=[' '+name.upper()+' ' for name in records[0]];csv.writer(out).writerows(records)
@@ -70,6 +73,7 @@ with tempfile.TemporaryDirectory() as tmp,patch.object(server,'DB_PATH',Path(tmp
             page.locator('#demoFile').set_input_files({'name':'unknown.csv','mimeType':'text/csv','buffer':b'foo,bar\n1,2'})
             expect(page.locator('#demoError')).to_contain_text('Use the normalized CSV template')
             expect(page.locator('#demoError')).to_contain_text('Connections')
+            expect(page.locator('#demoFileStatus')).to_contain_text('unknown.csv · Import failed:')
             expect(page.locator('#demoBaseline')).to_contain_text('$4,700.00')
             print('Rejected/unsupported files show useful messages and preserve prior data: PASS')
             with page.expect_download() as captured:page.locator('#demoTemplate').click()
@@ -87,6 +91,7 @@ with tempfile.TemporaryDirectory() as tmp,patch.object(server,'DB_PATH',Path(tmp
             picker.value.set_files({'name':'doordash-excel.csv','mimeType':'text/csv','buffer':source})
             expect(page.locator('#csvResult')).to_contain_text('0 new rows')
             expect(page.locator('#csvResult')).to_contain_text('781 already in your books')
+            expect(page.locator('#csvFileStatus')).to_contain_text('Processed: doordash-excel.csv')
             print('Connections accepts Excel CSV without duplicating seeded orders: PASS')
             assert not errors,errors
             print('No browser JavaScript errors: PASS')
