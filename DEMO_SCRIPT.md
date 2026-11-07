@@ -1,13 +1,14 @@
 # Three-minute judge presentation
 
-Prerequisite: run the credential-free command in README; open
+Prerequisite: bootstrap an owner password once, run the local command in README,
+then sign in. Open
 http://localhost:8000/#demo. No internet, AI key or Square token is required.
 Use only the repository's synthetic data.
 
 ## 0:00–0:30 — Ingest and establish trust
 
 “Restaurant owners need a defensible number before an AI recommendation.”
-Click **Load synthetic golden restaurant** (or upload `demo_data/golden.csv`).
+Click **Load example restaurant** (or upload `demo_data/golden.csv`).
 Show **$10,000 gross**, **$9,200 net**, **$4,700 contribution margin**, **51.09%**.
 “Refunds and merchant-funded promotions are represented once. The $100
 platform-funded promotion does not reduce restaurant revenue. Accounting profit
@@ -33,7 +34,7 @@ Point to the $4,700 margin and $100 conditional exposure.
 
 Use **5% menu price change**, **0% ingredient cost**, **0 commission points**.
 Click **Calculate scenario**. Show **$5,127.50 after**, **+$427.50 conditional
-weekly margin**, with unchanged demand and dollar refunds/promotions.
+contribution margin**, with unchanged demand and dollar refunds/promotions.
 “These are assumptions, not promised demand or revenue.”
 Click **Propose simulated execution**, review the requested scenario and type
 **APPROVE SIMULATION ONLY**. Click **Approve simulation**.
@@ -52,7 +53,7 @@ Click **Prepare draft** on the duplicate-document finding. Show
 
 Reload. Show the same baseline, saved scenario, simulated history and last draft.
 Optionally upload `demo_data/golden.csv` again: **4 duplicates skipped**, totals
-unchanged. Click **Reset connected demo**, confirm, then **Load synthetic golden
+unchanged. Click **Reset demo**, confirm, then **Load example
 restaurant** to repeat.
 
 “Python cents and Decimal own the financial arithmetic. Source exports can be

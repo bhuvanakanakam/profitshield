@@ -3,11 +3,13 @@
 Restaurant financial intelligence: import evidence, inspect suspected leakage,
 explain the numbers, compare a scenario, explicitly approve a **simulated** action,
 and prepare an owner-reviewed dispute draft. The connected hackathon workspace
-uses one backend financial engine; it does not require credentials or an LLM.
+uses one backend financial engine; it needs no external API credentials or LLM.
+An owner password protects the dashboard and its financial APIs.
 
 This is a **local synthetic prototype**, not a hosted accounting or payments
-system. It binds to `127.0.0.1`. This demo intentionally has no owner login or organization/location isolation.
-Do not expose it publicly, use production credentials, or load customer records.
+system. It binds to `127.0.0.1` and requires owner login. Organization/location
+isolation is incomplete. Use synthetic records for the hackathon; do not use
+production platform credentials or publicly expose the demo.
 
 ## Launch the judge demo
 
@@ -15,12 +17,18 @@ Python **3.9+**, standard library only. No application dependencies to install.
 From the repository root:
 
 ```bash
+# One-time setup: enter a new password of at least 14 characters.
+python3 owner_auth.py bootstrap
+
 # Explicitly blank credentials override any local .env values.
 OPENROUTER_API_KEY='' SQUARE_ACCESS_TOKEN='' PROFITSHIELD_AI_PRIVACY_APPROVED='' \
 BACKHOUSE_DB=/tmp/profitshield-hackathon.db python3 server.py
 ```
 
-Open **http://localhost:8000/#demo** directly (no password required). Choose **Load synthetic golden restaurant**.
+Open **http://localhost:8000/#demo**, sign in with the owner password, and choose
+**Load example restaurant**. The app uses light sage buttons, a guided financial
+workspace and an in-app **How it works** tour. See [the user guide](docs/USER_GUIDE.md)
+for every page and workflow.
 The table must show $10,000 gross sales, $9,200 net sales, $4,700 contribution
 margin and **51.09%**. Accounting profit is **Unavailable — operating expenses
 incomplete**. Follow [DEMO_SCRIPT.md](DEMO_SCRIPT.md) for the three-minute journey
@@ -38,9 +46,9 @@ does not discard the historical explorer's data.
 
 ## Repeat and reset
 
-**Reset connected demo** asks for confirmation and clears only its normalized
+**Reset demo** asks for confirmation and clears only its normalized
 transactions, documents, scenarios, simulated history and saved dispute drafts.
-Then **Load synthetic golden restaurant** restores the deterministic reference.
+Then **Load example restaurant** restores the deterministic reference.
 Loading the golden restaurant also clears prior connected scenarios/history.
 Reloading the page preserves data, scenarios, actions and generated dispute drafts.
 Guru text is a transient explanation and can be generated again.
@@ -152,8 +160,9 @@ receipt/PDF extraction remain behind an explicit privacy gate:
 - Delivery-app menu writes and dispute submission are not implemented.
 
 `BACKHOUSE_DB`, `STORE_TZ` (default America/New_York), `PORT`, and exact
-`PROFITSHIELD_ORIGIN` configure local execution. The origin must be HTTP on
-`localhost` or `127.0.0.1`; the server binds only to `127.0.0.1`. `.env` is optional and private;
+`PROFITSHIELD_ORIGIN` configure local execution. Local HTTP authentication is allowed only on
+`localhost` or `127.0.0.1`; the server binds only to `127.0.0.1`. An HTTPS origin
+uses Secure cookies; a remote HTTP origin is rejected. `.env` is optional and private;
 real environment variables take precedence. Never commit credentials or databases.
 
 ## Checks
@@ -165,6 +174,8 @@ node --test tests/js/*.test.cjs
 python3 tests/browser_prototype.py
 python3 tests/browser_input_security.py
 python3 tests/browser_square_guard.py
+python3 tests/browser_owner_auth.py
+python3 tests/browser_final_ui.py
 ```
 
 Tests use temporary databases, synthetic records and mocked/blocked outbound
@@ -174,3 +185,33 @@ they are not currently installed/run in CI. See [tests/README.md](tests/README.m
 
 Development PRs target **development**, never main. No automatic merge/deployment.
 See [DEMO_VERIFICATION.md](DEMO_VERIFICATION.md) for limits and migration notes.
+
+## Owner password and session
+
+Set the password once with `python3 owner_auth.py bootstrap`. If the owner already
+exists, use the existing password. To intentionally replace a forgotten password,
+run `python3 owner_auth.py recover`; this revokes all sessions. There is no default
+password, remote registration, or remote password-reset endpoint.
+
+Passwords are hashed with scrypt; only hashed session tokens are stored. Sessions
+expire after 30 minutes idle or 12 hours total. Financial reads require a valid
+session; mutations additionally require the session CSRF token and exact origin.
+Sign out revokes the session. Authentication storage is separate from restaurant
+records, so resetting demo data does not reset the password.
+
+Default setup needs only Python and the two commands above. For custom auth
+storage, use the same `PROFITSHIELD_AUTH_DB` environment variable for bootstrap
+and server, or pass `--db` to bootstrap. Do not commit the auth database.
+
+PowerShell launch after one-time password setup:
+
+```powershell
+$env:OPENROUTER_API_KEY=""
+$env:SQUARE_ACCESS_TOKEN=""
+$env:PROFITSHIELD_AI_PRIVACY_APPROVED=""
+python server.py
+```
+
+For macOS/Linux, the blank-credential command under Launch runs the local demo.
+The `PROFITSHIELD_LOCAL_HTTP` flag can explicitly override loopback mode; it does
+not permit insecure authentication to a remote HTTP host.

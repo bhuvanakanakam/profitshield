@@ -5,6 +5,7 @@ No credentials, real data, remote AI, or external writes.
 """
 from pathlib import Path
 import shutil
+import os
 import sys
 import tempfile
 import threading
@@ -12,6 +13,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import server
 from input_security import RequestLimiter
+from owner_auth import OwnerAuth
 from playwright.sync_api import sync_playwright, expect
 
 with tempfile.TemporaryDirectory() as tmp, patch.object(server, 'DB_PATH', Path(tmp)/'demo.db'), patch.object(
@@ -22,6 +24,10 @@ with tempfile.TemporaryDirectory() as tmp, patch.object(server, 'DB_PATH', Path(
     server.init_db()
     httpd = server.ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
     origin = 'http://127.0.0.1:'+str(httpd.server_port)
+    auth = OwnerAuth(Path(tmp)/'auth.sqlite3', origin, local_http=True)
+    password = 'synthetic-ui-test-passphrase'
+    auth.set_password(password)
+    httpd.owner_auth = auth
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     try:
@@ -32,11 +38,14 @@ with tempfile.TemporaryDirectory() as tmp, patch.object(server, 'DB_PATH', Path(
             page.on('pageerror',lambda e:errors.append(str(e)))
             page.route('**/*',lambda r:r.continue_() if r.request.url.startswith(origin) else r.abort())
             page.goto(origin)
+            page.locator('#password').fill(password)
+            page.locator('button').click()
             page.locator('#v-demo.active').wait_for()
             page.locator('.actions [data-go="ask"]').click()
             expect(page.locator('#demoQuestion')).to_be_focused()
             expect(page.locator('#assist')).to_be_hidden()
             page.locator('#demoLoad').click()
+            page.locator('.baseline-ledger summary').click()
             expect(page.locator('#demoBaseline')).to_contain_text('$4,700.00')
             expect(page.locator('#demoBaseline')).to_contain_text('51.09%')
             expect(page.locator('#demoBaseline')).to_contain_text('Unavailable — operating expenses incomplete')
@@ -74,6 +83,19 @@ with tempfile.TemporaryDirectory() as tmp, patch.object(server, 'DB_PATH', Path(
             expect(page.locator('#demoActions')).to_contain_text('Simulated')
             expect(page.locator('#demoDispute')).to_contain_text('Not established — inquiry only')
             print('SQLite persistence after reload: PASS')
+            for width in [390, 768, 1024, 1440]:
+                page.set_viewport_size({'width':width,'height':1000})
+                assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'), width
+            page.emulate_media(reduced_motion='reduce')
+            page.set_viewport_size({'width':1440,'height':1000})
+            screenshots = os.environ.get('PROFITSHIELD_UI_SCREENSHOTS')
+            if screenshots:
+                Path(screenshots).mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(Path(screenshots)/'desktop.png'),full_page=True)
+            page.set_viewport_size({'width':390,'height':844})
+            if screenshots:
+                page.screenshot(path=str(Path(screenshots)/'mobile.png'),full_page=True)
+            page.set_viewport_size({'width':1440,'height':1000})
             # Upload the golden CSV again and prove no duplicate inflation.
             page.locator('#demoFile').set_input_files(str(server.prototype.DATA/'golden.csv'))
             expect(page.locator('#demoImportReport')).to_contain_text('4 duplicate rows skipped')
@@ -87,12 +109,15 @@ with tempfile.TemporaryDirectory() as tmp, patch.object(server, 'DB_PATH', Path(
             assert page.locator('#v-demo img,#v-demo svg').count()==0
             print('Untrusted order IDs and source evidence render as text, no injected elements: PASS')
             # Keyboard focus and table semantics, not a claim of full WCAG conformance.
+            page.locator('.workflow-nav a[href="#scenario-step"]').click()
+            expect(page.locator('#scenario-step')).to_be_focused()
+            assert page.locator('#v-demo').is_visible()
             page.locator('#demoLoad').focus()
             expect(page.locator('#demoLoad')).to_be_focused()
             assert page.locator('#demoBaseline table caption').count()==1
             assert page.locator('#demoBaseline th[scope="col"]').count()==2
             page.keyboard.press('Tab')
-            expect(page.locator('#demoReset')).to_be_focused()
+            expect(page.locator('#demoRefresh')).to_be_focused()
             page.set_viewport_size({'width':390,'height':844})
             page.locator('#demoHeading').scroll_into_view_if_needed()
             assert page.locator('#demoHeading').bounding_box()['width'] < 390

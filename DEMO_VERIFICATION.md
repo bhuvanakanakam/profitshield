@@ -1,3 +1,8 @@
+> Historical verification for the initial connected prototype. Current UI/login
+> and end-to-end checks are documented in [docs/FINAL_VERIFICATION.md](docs/FINAL_VERIFICATION.md).
+> Owner login is now required; original test counts and button labels below refer
+> to that historical snapshot, not the final application.
+
 # Demo verification
 
 Verified locally on 2026-11-07. Branch: `feat/hackathon-complete-prototype`,
