@@ -1,0 +1,121 @@
+[
+  {
+    "num": 1,
+    "title": "Good food. Stronger margins.",
+    "subtitle": "ProfitShield \u00b7 NOVA 2026 \u00b7 DoorDash Back House",
+    "body": [
+      "Restaurant financial intelligence",
+      "Import \u2192 Explain \u2192 Simulate \u2192 Review"
+    ],
+    "notes": "A restaurant owner should not need five tabs to understand what the business keeps. ProfitShield brings payouts, sales and supplier evidence into one workflow, then helps the owner inspect a finding and decide what to do next."
+  },
+  {
+    "num": 2,
+    "title": "Five reports. One unanswered question.",
+    "subtitle": "The DoorDash back-house challenge",
+    "body": [
+      "Delivery payouts: fees, promotions, refunds",
+      "POS sales: another view of revenue",
+      "Supplier invoices: price and document evidence",
+      "Less manual stitching. Clearer decisions."
+    ],
+    "notes": "The DoorDash back-house prompt is about records scattered across sales reports, invoices, receipts and payouts. Owners spend time combining them before they can even ask what changed. Our focus is the financial decision: show the baseline, show the evidence, and keep the next action under the owner\u2019s control."
+  },
+  {
+    "num": 3,
+    "title": "One workspace. A decision you can inspect.",
+    "subtitle": "Live demo: load \u2192 inspect \u2192 explain",
+    "body": [
+      "Bring the records",
+      "Follow the evidence",
+      "Compare the tradeoff"
+    ],
+    "notes": "Switch to the demo for about 45 seconds. Load the example restaurant. Show the financial summary, open the commission finding, then click Explain finding. Point out that the source row and the same baseline appear together. If time is short, use this actual screenshot. Do not enable external services during judging."
+  },
+  {
+    "num": 4,
+    "title": "Start with a number you can defend.",
+    "subtitle": "Synthetic data, not a customer result",
+    "body": [
+      "Gross sales $10,000",
+      "Refunds $300; restaurant promotions $500",
+      "Net sales $9,200",
+      "Commissions $1,500; food $2,800; other variable costs $200",
+      "Contribution margin $4,700 \u00b7 51.09%",
+      "Accounting profit unavailable"
+    ],
+    "notes": "The golden dataset has ten thousand dollars in gross sales. Refunds and restaurant-funded promotions bring net sales to nine thousand two hundred. Commissions, food and other variable costs leave four thousand seven hundred in contribution margin. That is 51.09 percent of net sales. We do not call that accounting profit: operating expenses are incomplete. Platform-funded promotions are informational, and commission discrepancies are not deducted twice."
+  },
+  {
+    "num": 5,
+    "title": "A $100 question. With the receipts.",
+    "subtitle": "DoorDash:G-DD, synthetic reference row",
+    "body": [
+      "$4,000 gross sales",
+      "20% supplied gross-sales commission rate",
+      "$900 charged versus $800 expected",
+      "$100 conditional exposure; review before claiming",
+      "Duplicate invoice document \u2260 proven duplicate payment"
+    ],
+    "notes": "Here is the evidence-first behavior. A four-thousand-dollar DoorDash row records nine hundred in commission. At the supplied twenty-percent contract rate, the expected amount is eight hundred. The one-hundred-dollar difference is conditional exposure, not money recovered. The owner can prepare a draft with that row and assumption. And two invoice copies produce an inquiry, not an invented duplicate-payment claim."
+  },
+  {
+    "num": 6,
+    "title": "+$427.50\u2014if the assumptions hold.",
+    "subtitle": "5% price scenario, same synthetic dataset",
+    "body": [
+      "Before $4,700.00 \u2192 after $5,127.50",
+      "Demand and quantities unchanged",
+      "Refunds/promotions fixed in dollars",
+      "No external platform price changed"
+    ],
+    "notes": "The owner can test a five-percent menu price increase against exactly the same records. With demand and quantities held constant, the engine returns five thousand one hundred twenty-seven dollars and fifty cents in contribution margin\u2014a four-hundred-twenty-seven-dollar-and-fifty-cent improvement. Refunds and promotions stay fixed in dollars. This is conditional arithmetic, not a forecast or a live menu change. Approval is explicit and the result is labeled Simulated."
+  },
+  {
+    "num": 7,
+    "title": "Interpretation. Arithmetic. Approval.",
+    "subtitle": "AI direction with an honest deterministic demo",
+    "body": [
+      "Interpretation: optional privacy-gated AI in the historical path",
+      "Arithmetic: Python Decimal and integer cents",
+      "Approval: owner review, explicit confirmation, simulated result",
+      "Connected Guru is deterministic in this demonstration"
+    ],
+    "notes": "Our product direction puts AI around interpretation, code around money, and the owner around decisions. Financial arithmetic runs in Python Decimal and integer cents. The connected demo uses a clearly labeled deterministic Guru; it does not pretend to be a live language model. Optional AI mapping, receipt extraction and Q&A exist in the historical path and are privacy-gated. The useful result is a repeatable workflow with evidence and review controls."
+  },
+  {
+    "num": 8,
+    "title": "See the leak. Understand the tradeoff. Own the decision.",
+    "subtitle": "Built for DoorDash\u2019s back-house challenge",
+    "body": [
+      "Scattered records \u2192 financial understanding \u2192 reviewed next action",
+      "Next: a pilot workflow with reviewed contracts and complete costs",
+      "ProfitShield \u00b7 Good food. Stronger margins."
+    ],
+    "notes": "ProfitShield connects the records behind the restaurant to a decision the owner can inspect. It fits the DoorDash back-house challenge by reducing the manual work between scattered reports, financial understanding, and a reviewed next action. Our next step is a pilot workflow with reviewed contracts and complete cost records\u2014not claims of recovery or autonomous production changes. Good food. Stronger margins."
+  },
+  {
+    "num": 9,
+    "title": "Two experiences. One financial core.",
+    "subtitle": "Appendix: architecture",
+    "body": [
+      "Connected: CSV \u2192 prototype.py \u2192 financial_engine.py",
+      "Historical: imports \u2192 legacy_finance.py \u2192 financial_engine.py",
+      "SQLite; Python HTTP server; vanilla frontend",
+      "UI branch includes owner session and CSRF controls"
+    ],
+    "notes": "The code contains two experiences. The connected path uses normalized financial records, prototype workflow tables and the canonical cents engine. The historical path uses platform imports, ingredient recipes and an adapter with explicit estimation assumptions. Both are served by the Python server and stored locally in SQLite. Reviewers should use the tested UI branch, not assume development and main contain the same application."
+  },
+  {
+    "num": 10,
+    "title": "What is real\u2014and what comes next.",
+    "subtitle": "Appendix: implementation boundaries",
+    "body": [
+      "Working: local imports, evidence, arithmetic, scenarios, state, drafts",
+      "Simulated: connected execution; deterministic Guru fallback",
+      "Optional: privacy-gated AI; separate Square sandbox review flow",
+      "Next: completeness, reconciliation, isolation, pilots"
+    ],
+    "notes": "Working means the local synthetic workflow is implemented and tested. It does not mean money was recovered, production menus changed, external AI ran, or multiple locations are isolated. The next work is complete cost inputs and payment reconciliation, tenant isolation, privacy-reviewed AI, and owner validation. Sources: repository at github.com/bhuvanakanakam/profitshield; NOVA context and palette from nova.scottylabs.org; DoorDash track wording from the participant-provided brief. Product screenshot from feat/uiux-latest at 7c5b6c6."
+  }
+]
