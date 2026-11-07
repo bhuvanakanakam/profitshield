@@ -24,11 +24,12 @@ class OwnerAuthTests(HTTPFixture):
                             authenticated=False, **kwargs)
 
     def test_anonymous_cannot_call_sensitive_endpoints(self):
-        for method, paths in [('GET', ['/api/data', '/api/auth/session']),
-                              ('HEAD', ['/api/data', '/api/auth/session']),
+        for method, paths in [('GET', ['/api/data', '/api/auth/session', '/api/prototype']),
+                              ('HEAD', ['/api/data', '/api/auth/session', '/api/prototype']),
                               ('POST', ['/api/data', '/api/reset', '/api/import', '/api/invoices',
                                         '/api/menu/apply', '/api/menu/preview', '/api/square/seed/preview', '/api/ask', '/api/extract',
-                                        '/api/square/sync', '/api/square/seed', '/api/auth/logout'])]:
+                                        '/api/square/sync', '/api/square/seed', '/api/auth/logout', '/api/simulate',
+                                        '/api/prototype/import', '/api/prototype/load-golden', '/api/prototype/approve'])]:
             for path in paths:
                 with self.subTest(method=method, path=path), patch.object(server, 'app_data') as data:
                     status, _, body = self.request(method, path, {} if method == 'POST' else None,
@@ -51,6 +52,14 @@ class OwnerAuthTests(HTTPFixture):
                 self.assertEqual(self.request('POST', route, valid_payload(route),
                                               headers={'X-CSRF-Token': ''})[0], 403)
                 dispatch.assert_not_called()
+
+    def test_connected_demo_writes_require_csrf(self):
+        for route in ['/api/prototype/load-golden', '/api/prototype/reset',
+                      '/api/prototype/import', '/api/prototype/approve', '/api/simulate']:
+            with self.subTest(route=route), patch.object(server.prototype, 'operate') as operate:
+                self.assertEqual(self.request('POST', route, {},
+                                              headers={'X-CSRF-Token': ''})[0], 403)
+                operate.assert_not_called()
 
     def test_login_and_dashboard_scripts_share_response_nonce(self):
         for authenticated in [False, True]:

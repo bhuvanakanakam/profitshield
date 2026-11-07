@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 import server
+from owner_auth import OwnerAuth
 from input_security import RequestLimiter
 
 
@@ -80,7 +81,7 @@ class HTTPFixture(unittest.TestCase):
         cls.root_patch.stop()
         cls.temp.cleanup()
 
-    def request(self, method, path, payload=None, headers=None, raw=None):
+    def request(self, method, path, payload=None, headers=None, raw=None, authenticated=True):
         conn = http.client.HTTPConnection(*self.httpd.server_address, timeout=5)
         try:
             body = json.dumps(payload) if payload is not None else None
