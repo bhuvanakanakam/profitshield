@@ -412,7 +412,9 @@ body{font-size:14px}.app{grid-template-columns:228px minmax(0,1fr)}
     <p>Upload a synthetic CSV from DoorDash, Uber Eats, Grubhub, Square or your suppliers. Use <code>demo_data/golden.csv</code> for a complete example. Missing costs stay unknown until reviewed.</p>
     <label class="upload-zone" id="demoUpload" for="demoFile"><span class="upload-plus" aria-hidden="true">+</span><b>Choose a CSV to get started</b><span>Platform exports or normalized financial records · Up to 4 MiB</span></label>
     <input id="demoFile" type="file" accept=".csv,text/csv">
-    <div id="demoImportReport"></div>
+    <div class="row" style="flex-wrap:wrap;margin-top:12px"><button class="btn ghost sm" type="button" id="demoTemplate">Download CSV template</button><button class="btn link sm" data-go="sources" type="button">Unfamiliar payout columns? Use Connections</button></div>
+    <p class="note" style="margin-top:8px">Comma, semicolon or tab-separated CSV · UTF-8 or BOM-marked UTF-16. Imports update this workspace only.</p>
+    <div id="demoImportReport" aria-live="polite"></div>
   </section>
   <section class="card workflow-card" id="guru-step" aria-labelledby="guru-step-title"><span class="eyebrow">02 / UNDERSTAND</span><h3 id="guru-step-title">Ask a better question</h3>
     <p>Get an explanation tied to your records. Select a finding, or ask about the baseline. This demo uses a deterministic fallback.</p>
@@ -578,6 +580,13 @@ async function apiFetch(url,options={}){
   const response=await fetch(url,{...options,headers,credentials:'same-origin'});
   if(response.status===401){location.replace('/login');throw new Error('Session expired. Sign in again.');}
   return response;
+}
+async function readCsvFile(file){
+  if(!/\.csv$/i.test(file.name))throw new Error('Choose a .csv file. Export spreadsheets as CSV UTF-8 first.');
+  if(file.size>4*1024*1024)throw new Error('CSV exceeds 4 MiB');
+  const buffer=await file.arrayBuffer(),bytes=new Uint8Array(buffer);
+  const encoding=bytes[0]===255&&bytes[1]===254?'utf-16le':bytes[0]===254&&bytes[1]===255?'utf-16be':'utf-8';
+  try{return new TextDecoder(encoding,{fatal:true}).decode(buffer)}catch{throw new Error('The file encoding could not be read. Export CSV UTF-8 or a BOM-marked UTF-16 CSV and try again.')}
 }
 /* ============ helpers ============ */
 const $=s=>document.querySelector(s);
@@ -960,7 +969,7 @@ function renderImports(){
 async function importFiles(files){
   if(!BACKEND.on){toast('Run server.py to import real files');return}
   const out=[];$('#csvResult').innerHTML='<p class="pad typing" style="padding-top:0">Importing…</p>';
-  for(const f of files){try{if(f.size>4*1024*1024)throw new Error('CSV exceeds 4 MiB');const text=await f.text();const r=await apiFetch('/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,filename:f.name})});const j=await r.json();if(!r.ok||j.error)throw new Error(j.error||'Import failed');out.push(`<div class="callout"><b>${esc(f.name)}</b><span>${esc(j.format)}${j.channel?' · '+esc(j.channel):''} · columns mapped by ${esc(j.mapped_by)} · ${j.new_rows} new rows, ${j.duplicates_skipped} already in your books${j.redacted?` · ${j.redacted} personal fields removed`:''}</span>${j.mapped_by!=='known format'?`<span class="mono note" style="font-size:12px">${esc(Object.entries(j.mapping).map(([k,v])=>v+' → '+k).join('   '))}</span>`:''}</div>`)}
+  for(const f of files){try{const text=await readCsvFile(f);const r=await apiFetch('/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,filename:f.name})});const j=await r.json();if(!r.ok||j.error)throw new Error(j.error||'Import failed');out.push(`<div class="callout"><b>${esc(f.name)}</b><span>${esc(j.format)}${j.channel?' · '+esc(j.channel):''} · columns mapped by ${esc(j.mapped_by)} · ${j.new_rows} new rows, ${j.duplicates_skipped} already in your books${j.redacted?` · ${j.redacted} personal fields removed`:''}</span>${j.mapped_by!=='known format'?`<span class="mono note" style="font-size:12px">${esc(Object.entries(j.mapping).map(([k,v])=>v+' → '+k).join('   '))}</span>`:''}</div>`)}
     catch(e){out.push(`<div class="callout"><b>${esc(f.name)}</b><span>Couldn't import: ${esc(e.message)}</span></div>`)}}
   $('#csvResult').innerHTML=`<div class="pad" style="padding-top:0;display:grid;gap:10px">${out.join('')}</div>`;
   await loadBackend();recompute();go('sources');
@@ -1249,7 +1258,7 @@ async function task(control,fn){
   busy=true;el('v-demo').setAttribute('aria-busy','true');el('demoError').textContent='';el('demoStatus').textContent='Working…';
   const previous=[...el('v-demo').querySelectorAll('button,input')].map(node=>[node,node.disabled]);
   previous.forEach(([node])=>node.disabled=true);
-  try{await fn();el('demoStatus').textContent='Up to date · Saved locally'}
+  try{const message=await fn();el('demoStatus').textContent=typeof message==='string'?message:'Up to date · Saved locally'}
   catch(error){el('demoError').textContent=error.message;el('demoStatus').textContent='Action was not completed. Your last loaded records are preserved.';focusResult(el('demoError'))}
   finally{busy=false;el('v-demo').setAttribute('aria-busy','false');previous.forEach(([node,disabled])=>{if(node.isConnected)node.disabled=disabled});availability()}
 }
@@ -1285,6 +1294,7 @@ function render(){
   el('demoBriefing').textContent=state.findings.length?state.briefing:state.rows.length?'No review findings in the imported records. Missing inputs can still limit what is known.':'Load data to discover findings with source evidence.';
   const report=clear('demoImportReport');report.append(text('p',state.label+' · '+state.rows.length+' normalized transactions · '+state.duplicates_skipped+' duplicate rows skipped.'));
   if(state.documents.length)report.append(text('p',state.documents.length+' supplier invoice observations · document copies do not establish payments.'));
+  if(state.last_import){const summary=state.last_import;report.append(text('p',summary.filename+' · '+summary.transactions_added+' transactions added · '+summary.documents_added+' invoice observations added · '+summary.rejected_rows+' rejected rows.'))}
   for(const rejected of state.rejected)report.append(text('p','Rejected row '+(rejected.row||rejected.id)+': '+rejected.reason));
   const findings=clear('demoFindings');
   for(const finding of state.findings){
@@ -1339,11 +1349,13 @@ async function refresh(){
   if(state.disputes.length)showDraft(state.disputes[state.disputes.length-1],false);else clear('demoDispute');
 }
 async function importFile(file){
-  if(!file)return;
+  if(!file)return;if(busy){el('demoStatus').textContent='Wait for the current operation to finish, then choose or drop your CSV again.';return}
   await task(el('demoFile'),async()=>{
-    if(!/\.csv$/i.test(file.name))throw new Error('Choose a CSV file. For receipt photos and PDFs, use Connections.');
-    if(file.size>4*1024*1024)throw new Error('CSV exceeds 4 MiB');
-    state=await request('import',{text:await file.text(),filename:file.name});clear('demoGuru');clear('demoDispute');render();
+    const source=await readCsvFile(file);
+    state=await request('import',{text:source,filename:file.name});clear('demoGuru');clear('demoDispute');render();
+    const result=state.last_import;
+    if(result?.rejected_rows){focusResult(el('demoImportReport'));return (result.transactions_added||result.documents_added?'Import completed with row errors. ':'No records added. ')+result.rejected_rows+' rejected rows; review the import report.'}
+    return 'Import complete · '+(result?.transactions_added||0)+' transactions added · '+(result?.documents_added||0)+' invoice observations added · '+state.duplicates_skipped+' duplicates skipped';
   });
   el('demoFile').value='';
 }
@@ -1355,9 +1367,13 @@ el('demoLoad').onclick=()=>{
 };
 el('demoReset').onclick=()=>{if(window.confirm('Reset only the connected synthetic demo, its scenarios and action history? Original sample imports are preserved.'))task(el('demoReset'),async()=>{state=await request('reset',{});clear('demoGuru');clear('demoDispute');render()})};
 el('demoRefresh').onclick=()=>task(el('demoRefresh'),refresh);
+el('demoTemplate').onclick=()=>{
+  const csv='id,source,date,channel,gross_sales,refunds,restaurant_promotions,platform_promotions,commissions,other_platform_fees,food_costs,other_variable_costs,contract_rate,contract_basis,promotion_approved\nEXAMPLE-001,synthetic-template:2,2026-10-26,In-store,100,0,0,0,0,0,30,5,0,gross_sales,true\n';
+  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),link=document.createElement('a');link.href=url;link.download='profitshield-synthetic-template.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
 el('demoFile').onchange=()=>importFile(el('demoFile').files[0]);
 const zone=el('demoUpload');
-zone.ondragover=event=>{event.preventDefault();zone.classList.add('over')};zone.ondragleave=()=>zone.classList.remove('over');zone.ondrop=event=>{event.preventDefault();zone.classList.remove('over');if(!busy)importFile(event.dataTransfer.files[0])};
+zone.ondragover=event=>{event.preventDefault();zone.classList.add('over')};zone.ondragleave=()=>zone.classList.remove('over');zone.ondrop=event=>{event.preventDefault();zone.classList.remove('over');importFile(event.dataTransfer.files[0])};
 el('demoGuruForm').onsubmit=event=>{event.preventDefault();task(event.submitter,async()=>showGuru(await request('guru',{question:el('demoQuestion').value})))};
 el('demoSimForm').onsubmit=event=>{event.preventDefault();task(event.submitter,async()=>{await request('simulate',{name:el('demoScenarioName').value,changes:{price_change_pct:Number(el('demoPrice').value),ingredient_cost_change_pct:Number(el('demoFood').value),commission_rate_change:Number(el('demoCommission').value)/100}});await refresh();focusResult(el('demoScenarios'))})};
 availability();

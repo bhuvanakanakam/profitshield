@@ -35,6 +35,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from zoneinfo import ZoneInfo
 import prototype
+from csv_import import CSVImportError, csv_reader, csv_rows
 import legacy_finance
 from financial_engine import price_increment, commission_overcharge, cents as financial_cents
 from square_actions import ActionError, PlanStore, fingerprint
@@ -387,14 +388,11 @@ def map_by_ai(headers, sample_rows, filename):
 # ---------------------------------------------------------------- import
 def import_csv(text, filename, channel=None, allow_ai=True):
     validate_payload('/api/import', {'text': text, 'filename': filename, 'channel': channel}, MENU, INGREDIENTS)
-    reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
-    headers = [h.strip() for h in (reader.fieldnames or [])]
-    if not headers or len(headers) > 100 or any(not h or len(h) > 100 for h in headers) or len(set(headers)) != len(headers):
-        raise ValueError("CSV requires distinct, nonempty headers (up to 100)")
-    reader.fieldnames = headers
+    reader = csv_reader(text)
+    headers = reader.fieldnames
     rows = []
     try:
-        for row in reader:
+        for row in csv_rows(reader):
             if len(rows) >= ROW_LIMIT:
                 raise ValueError("CSV exceeds 20000 rows")
             if None in row or any(v is None or len(v) > 4096 for v in row.values()):
@@ -402,6 +400,8 @@ def import_csv(text, filename, channel=None, allow_ai=True):
             rows.append(row)
     except csv.Error:
         raise ValueError("Invalid CSV") from None
+    if not rows:
+        raise CSVImportError('The CSV contains headers but no data rows. Add transaction or invoice rows and try again.')
     headers, rows, redacted, pii_cols = redact(headers, rows)
     fmt = detect_known(headers)
     mapped_by, fmt_name = "known format", None
@@ -425,11 +425,11 @@ def import_csv(text, filename, channel=None, allow_ai=True):
             kind = "pos" if ch == "In-store" else ai_kind
         fmt_name = "Unfamiliar layout"
         if not ch:
-            raise ValueError("couldn't tell which app this file is from. Put the app name in the file name")
+            raise CSVImportError("Could not identify the platform. Include DoorDash, Uber Eats, Grubhub or Square in the filename, or use normalized records in Financial workspace.")
         need = ["order_id", "subtotal"] + ([] if "datetime" in mp else ["date"])
         missing = [f for f in need if f not in mp]
         if missing:
-            raise ValueError("couldn't find columns for " + ", ".join(missing))
+            raise CSVImportError("Required payout columns could not be mapped: " + ", ".join(missing) + ". Check the export headers or use a complete supported export.")
 
     get = lambda r, f: (r.get(mp[f]) if f in mp and mp[f] else None)
     new = 0
@@ -1349,6 +1349,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(400, {"error": "OPENROUTER_API_KEY is not set"})
                 return self._json(200, ask(p) if self.path == "/api/ask" else extract(p))
             return self._json(404, {"error": "unknown route"})
+        except CSVImportError as error:
+            return self._json(400, {'error': str(error), 'code': 'csv_import'})
         except ActionError as error:
             return self._json(error.status, {'error': str(error)})
         except (ValueError, TypeError, csv.Error, RecursionError, OverflowError):

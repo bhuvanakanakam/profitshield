@@ -68,3 +68,22 @@ password is committed. If an owner already exists, its password remains valid.
 Recovery intentionally revokes sessions. A demo reset does not reset the password.
 For custom authentication storage, export the same path for CLI and server.
 No production deployment or database reset is part of this change.
+
+## CSV compatibility follow-up
+
+Both CSV paths now share `csv_import.py`, accept comma/semicolon/tab separators,
+Excel `sep=` preambles and trimmed headers, and preserve validation/deduplication.
+The browser reads UTF-8 or BOM-marked UTF-16 LE/BE without lossy decoding. Specific
+CSV errors are deliberately safe API responses; unrelated internal errors remain
+generic. Financial values and incomplete-input rules are unchanged.
+
+Financial workspace reports added/skipped/rejected counts and does not announce
+all-row rejection as an unqualified success. A downloadable synthetic template
+and explicit Connections guidance help unsupported layouts. Prior records remain
+unchanged on invalid files or conflicts. No migration or data reset is required;
+optional last-import metadata is added to connected state.
+
+Verified: 120 Python tests, seven Node tests, all original five browser journeys,
+and the new CSV journey. Native chooser clicks, UTF-16 LE/BE, spreadsheet
+dialects, drag/drop, template download/reimport, rejection messages and exact
+baselines/dedupe were checked. No external AI mapping or provider call was used.

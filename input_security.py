@@ -1,5 +1,6 @@
 """Bounded API inputs and single-process request limits; no external services."""
 import base64
+from csv_import import CSVImportError
 import binascii
 import math
 import re
@@ -148,6 +149,8 @@ def validate_payload(route, p, menu, ingredients):
     bounded_json(p)
     if route == '/api/import':
         fields(p, {'text', 'filename', 'channel'}, {'text'})
+        if isinstance(p['text'], str) and not p['text'].strip():
+            raise CSVImportError('The CSV is empty. Include column headers and at least one data row.')
         text(p['text'], 'CSV', CSV_LIMIT, required=True)
         if len(p['text'].encode('utf-8')) > CSV_LIMIT:
             raise ValueError('CSV exceeds 4 MiB')

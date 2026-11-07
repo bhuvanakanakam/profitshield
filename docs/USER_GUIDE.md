@@ -39,7 +39,9 @@ complete. These are synthetic reference amounts, not a customer outcome.
 ### Import
 
 Upload a normalized CSV or known DoorDash, Uber Eats, Grubhub, Square or supplier
-export. A corrected file can be selected again after an error. Accepted data is
+export. Comma, semicolon and tab separators, Excel separator preambles, UTF-8
+and BOM-marked UTF-16 are supported. Header spaces are trimmed; normalized names
+are case-insensitive. Download a synthetic CSV template beside the upload control. A corrected file can be selected again after an error. Accepted data is
 stored; identical transactions are skipped, and conflicting records are reported
 rather than silently overwritten. Supplier files can provide invoice observations
 without proving payments. Missing variable costs remain unknown. Known platform

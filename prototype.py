@@ -6,6 +6,7 @@ import re
 import secrets
 import time
 from pathlib import Path
+from csv_import import CSVImportError, csv_reader, csv_rows
 from financial_engine import normalize, calculate, findings, simulate, digest, MONEY, decimal, cents
 
 DATA = Path(__file__).resolve().parent / 'demo_data'
@@ -55,19 +56,26 @@ def identifier(payload, field, length=32):
 
 def ingest(con, text, filename, known_formats=(), date_parser=None):
     if not isinstance(text, str) or len(text.encode()) > 4 * 1024 * 1024:
-        raise ValueError('CSV must be at most 4 MiB')
+        raise CSVImportError('CSV must be text of at most 4 MiB')
     if not isinstance(filename, str) or not filename or len(filename) > 200:
         raise ValueError('Filename required (200 characters maximum)')
-    reader = csv.DictReader(io.StringIO(text.lstrip('\ufeff')), strict=True)
-    headers = reader.fieldnames or []
-    if not headers or len(headers) > 30 or len(set(headers)) != len(headers):
-        raise ValueError('Distinct normalized CSV headers required')
+    reader = csv_reader(text)
+    headers = reader.fieldnames
+    required = {'id','source','date','channel',*MONEY}
+    # Canonical normalized headers are case-insensitive; platform names stay intact.
+    canonical = required | {'contract_rate','contract_basis','promotion_approved','fee_reason'}
+    if required.issubset({header.casefold() for header in headers}):
+        reader.fieldnames = headers = [header.casefold() if header.casefold() in canonical else header for header in headers]
+        if len(set(headers)) != len(headers):
+            raise CSVImportError('Normalized CSV column names must be distinct, ignoring case and surrounding spaces.')
     known = next((fmt for fmt in known_formats if set(fmt['map'].values()).issubset(headers)), None)
-    if not known and not {'id','source','date','channel',*MONEY}.issubset(headers):
-        raise ValueError('Use normalized financial CSV or a supported known platform/supplier export')
+    if not known and not required.issubset(headers):
+        raise CSVImportError('This layout is not supported in Financial workspace. Use the normalized CSV template or a complete supported platform/supplier export. For unfamiliar historical payout columns, use Connections. No records were changed.')
     raw, malformed, documents = [], [], []
-    for i, row in enumerate(reader, 2):
-        if i > 20001:
+    input_rows = 0
+    for input_rows, row in enumerate(csv_rows(reader), 1):
+        i = input_rows + 1 + reader.source_offset
+        if input_rows > 20000:
             raise ValueError('CSV exceeds 20000 rows')
         if None in row or any(v is None or len(v) > 4096 for v in row.values()):
             malformed.append({'row': i, 'reason': 'CSV cell count or size invalid'})
@@ -105,11 +113,14 @@ def ingest(con, text, filename, known_formats=(), date_parser=None):
             raw.append((i, row))
         except ValueError as error:
             malformed.append({'row': i, 'reason': str(error)})
+    if not input_rows:
+        raise CSVImportError('The CSV contains headers but no data rows. Add transaction or invoice rows and try again.')
     accepted, rejected, duplicates = normalize([r for _,r in raw])
     for rejection in rejected:
         rejection['row'] = raw[rejection['row'] - 2][0]
     state = read(con)
     existing = {(r['channel'], r['id']): r for r in state['rows']}
+    original_rows = len(existing)
     for row in accepted:
         key = (row['channel'], row['id'])
         if key in existing:
@@ -122,6 +133,7 @@ def ingest(con, text, filename, known_formats=(), date_parser=None):
             existing[key] = row
     document_key = lambda doc: digest({k:v for k,v in doc.items() if k != 'source'})
     existing_docs = {document_key(doc): doc for doc in state['documents']}
+    original_documents = len(existing_docs)
     for doc in documents:
         key = document_key(doc)
         if key in existing_docs:
@@ -131,7 +143,11 @@ def ingest(con, text, filename, known_formats=(), date_parser=None):
     if len(existing) > 20000 or len(existing_docs) > 20000:
         raise ValueError('Connected dataset exceeds 20000 records; reset before importing more')
     state.update(rows=list(existing.values()), documents=list(existing_docs.values()), rejected=rejected + malformed,
-                 duplicates_skipped=duplicates, label='Imported ' + (known['name'] if known else 'normalized financial CSV'))
+                 duplicates_skipped=duplicates, label='Imported ' + (known['name'] if known else 'normalized financial CSV'),
+                 last_import={'filename': filename, 'input_rows': input_rows,
+                              'transactions_added': len(existing)-original_rows,
+                              'documents_added': len(existing_docs)-original_documents,
+                              'duplicates_skipped': duplicates, 'rejected_rows': len(rejected)+len(malformed)})
     write(con, state)
     return output(con)
 

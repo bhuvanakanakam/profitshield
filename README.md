@@ -259,6 +259,14 @@ id,source,date,channel,gross_sales,refunds,restaurant_promotions,platform_promot
 | `promotion_approved` | Optional boolean `true`/`false`; defaults to false if the column is omitted. Use an explicit boolean when supplied. |
 | `fee_reason` | Optional text used to group recorded/repeated platform fees. |
 
+Both upload paths accept comma, semicolon or tab-separated CSV, including Excel
+`sep=;` preambles, UTF-8 and BOM-marked UTF-16 files. Header spaces are trimmed;
+normalized header names are case-insensitive. **Download CSV template** in the
+Financial workspace supplies a synthetic example. Import reports identify added
+transactions/invoice observations, skipped duplicates and rejected rows. An
+unsupported layout produces a specific explanation instead of a generic request
+error; unfamiliar historical layouts belong in Connections.
+
 Connected CSV uploads are limited to **4 MiB** and **20,000 input rows**. Unknown
 layouts must be converted to normalized CSV; the connected import path does not
 invoke an LLM. Known platform exports can lack refunds, food consumption, complete
@@ -493,10 +501,13 @@ python3 tests/browser_owner_auth.py
 python3 tests/browser_input_security.py
 python3 tests/browser_square_guard.py
 python3 tests/browser_final_ui.py
+python3 tests/browser_csv_upload.py
 ```
 
-Final application verification recorded **112 passing Python tests, seven passing
-JavaScript tests, and five passing browser journeys**. GitHub CI passed Python
+The final UI/login release recorded **112 passing Python tests, seven passing
+JavaScript tests, and five passing browser journeys**. The CSV compatibility
+follow-up adds eight Python regression tests (120 total) and a sixth browser
+journey for picker/drop/template/encoding behavior. GitHub CI passed Python
 3.9, Python 3.12 and Node for the final UI/login code. See the
 [verification record](docs/FINAL_VERIFICATION.md) and
 [successful CI run](https://github.com/bhuvanakanakam/profitshield/actions/runs/42419891051).
@@ -516,6 +527,7 @@ For opt-in screenshots:
 
 ```bash
 PROFITSHIELD_UI_SCREENSHOTS=/tmp/profitshield-ui python3 tests/browser_final_ui.py
+python3 tests/browser_csv_upload.py
 ```
 
 See [tests/README.md](tests/README.md) for fixtures and detailed commands.

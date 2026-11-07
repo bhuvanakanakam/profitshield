@@ -135,3 +135,15 @@ Optional screenshots:
 `PROFITSHIELD_UI_SCREENSHOTS=/tmp/profitshield-ui python3 tests/browser_final_ui.py`.
 Screenshots are opt-in and not written into the repository by default. Browser
 scripts are optional local checks; the existing CI runs Python and Node suites.
+
+## CSV upload compatibility
+
+`test_csv_upload.py` covers spreadsheet delimiters, Excel separator directives,
+trimmed/case-insensitive normalized headers, useful empty/duplicate-header errors,
+source-row reporting, parser rollback, exact cents and cross-format dedupe.
+`python3 tests/browser_csv_upload.py` also exercises actual file-chooser clicks,
+UTF-16 LE/BE decoding, drag/drop, rejected-row messaging, template download/upload,
+and the historical upload path against authenticated local HTTP.
+
+The CSV follow-up passes 120 Python tests, seven Node tests and six local browser
+journeys. These checks use synthetic records with external services blocked.
