@@ -61,8 +61,6 @@ def _load_env(path):
 
 
 _load_env(ROOT / ".env")
-# Load auth configuration after .env, without weakening the common input boundary.
-from owner_auth import AUTH_PATH, LOGIN_PAGE, OwnerAuth
 SAMPLES = ROOT / "samples"
 DB_PATH = Path(os.environ.get("BACKHOUSE_DB", ROOT / "backhouse.db"))
 KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
@@ -79,6 +77,11 @@ LOCK = threading.Lock()
 MUTATION_LOCK = threading.Lock()
 ACTION_CONTEXT = threading.local()
 PUBLIC_ORIGIN = validate_origin(os.environ.get("PROFITSHIELD_ORIGIN", f"http://localhost:{PORT}"))
+# Passwordless demo is deliberately restricted to loopback origins only.
+from urllib.parse import urlsplit
+_demo_origin = urlsplit(PUBLIC_ORIGIN)
+if _demo_origin.scheme != "http" or _demo_origin.hostname not in ("localhost", "127.0.0.1"):
+    raise ValueError("Passwordless ProfitShield demo requires a localhost HTTP origin")
 REQUEST_LIMITER = RequestLimiter()
 
 # Store catalog. Mirrors MENU / ING in index.html (names are what exports print).
@@ -1192,12 +1195,10 @@ class Handler(BaseHTTPRequestHandler):
             return True
         return False
 
-    def _json(self, code, obj, cookie=None):
+    def _json(self, code, obj):
         body = json.dumps(obj, allow_nan=False).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
-        if cookie:
-            self.send_header("Set-Cookie", cookie)
         if code == 429:
             self.send_header("Retry-After", "60")
         self.send_header("Cache-Control", "no-store")
@@ -1215,9 +1216,6 @@ class Handler(BaseHTTPRequestHandler):
         # Match canonical URL paths only. Do not decode or normalize untrusted
         # paths into filesystem names (including encoded traversal/separators).
         path = self.path.split("?", 1)[0].split("#", 1)[0]
-        auth = self.server.owner_auth
-        token = auth.token_from_cookie(self.headers.get('Cookie'))
-        authenticated = auth.authorized(token)
         if path == "/api/health":
             return self._json(200, {"ok": True, "ai": bool(KEY and EXTERNAL_AI_APPROVED), "model": MODEL, "backend": True,
                                     "square": bool(SQUARE_TOKEN)})
@@ -1331,22 +1329,12 @@ class Handler(BaseHTTPRequestHandler):
             super().log_message(fmt, *args)
 
 
-def configured_auth():
-    if AUTH_PATH.resolve() == DB_PATH.resolve():
-        raise ValueError("Authentication and restaurant databases must use separate paths")
-    return OwnerAuth(AUTH_PATH, os.environ.get("PROFITSHIELD_ORIGIN", ""),
-                     local_http=os.environ.get("PROFITSHIELD_LOCAL_HTTP") == "1")
-
-
 if __name__ == "__main__":
-    auth = configured_auth()
-    local_http = os.environ.get('PROFITSHIELD_LOCAL_HTTP') == '1'
     init_db()
     print(f"ProfitShield on http://localhost:{PORT}")
     print(f"  AI: {'on, ' + MODEL if KEY else 'off (set OPENROUTER_API_KEY)'}")
     print(f"  Square: {'on, ' + SQUARE_BASE if SQUARE_TOKEN else 'off (set SQUARE_ACCESS_TOKEN for live POS sync)'}")
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    httpd.owner_auth = auth
 
     try:
       httpd.serve_forever()
