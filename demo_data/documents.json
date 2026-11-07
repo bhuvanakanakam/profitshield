@@ -1,0 +1,5 @@
+[
+ {"vendor": "Synthetic Foods", "invoice": "INV-1", "date": "2026-10-19", "ingredient": "mozzarella", "unit": "lb", "unit_price": "4.00", "source": "demo_data/documents.json:2"},
+ {"vendor": "Synthetic Foods", "invoice": "INV-2", "date": "2026-10-26", "ingredient": "mozzarella", "unit": "lb", "unit_price": "5.00", "source": "demo_data/documents.json:3"},
+ {"vendor": "Synthetic Foods", "invoice": "INV-2", "date": "2026-10-26", "ingredient": "mozzarella", "unit": "lb", "unit_price": "5.00", "source": "demo_data/documents.json:4"}
+]
