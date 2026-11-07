@@ -1192,7 +1192,7 @@ class Handler(BaseHTTPRequestHandler):
             return True
         return False
 
-    def _json(self, code, obj):
+    def _json(self, code, obj, cookie=None):
         body = json.dumps(obj, allow_nan=False).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
