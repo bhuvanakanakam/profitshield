@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import server
 from input_security import RequestLimiter
+from owner_auth import OwnerAuth
 
 
 def valid_payload(route):
