@@ -1,217 +1,559 @@
 # ProfitShield
 
-Restaurant financial intelligence: import evidence, inspect suspected leakage,
-explain the numbers, compare a scenario, explicitly approve a **simulated** action,
-and prepare an owner-reviewed dispute draft. The connected hackathon workspace
-uses one backend financial engine; it needs no external API credentials or LLM.
-An owner password protects the dashboard and its financial APIs.
+**Good food. Stronger margins.**
 
-This is a **local synthetic prototype**, not a hosted accounting or payments
-system. It binds to `127.0.0.1` and requires owner login. Organization/location
-isolation is incomplete. Use synthetic records for the hackathon; do not use
-production platform credentials or publicly expose the demo.
+ProfitShield helps restaurant owners bring delivery payouts, POS sales and supplier
+records into one place, inspect the evidence behind financial issues, and compare
+what to do next. Built for the **NOVA 2026 DoorDash Back House challenge**.
 
-## Launch the judge demo
+The current app is an **authenticated local prototype** with a responsive
+HTML/CSS/JavaScript interface, a Python backend and SQLite storage. Its connected
+workflow runs without an AI key: code calculates the money, a deterministic Guru
+explains the evidence, and the owner reviews any proposed action.
 
-Python **3.9+**, standard library only. No application dependencies to install.
-From the repository root:
+[Quick start](#quick-start) · [Features](#features) · [Demo](#try-the-demo) ·
+[Import and financial rules](#import-format-and-financial-rules) ·
+[Architecture](#architecture) · [Login and storage](#authentication-storage-and-reset) ·
+[Configuration](#configuration) · [Integrations](#optional-integrations) ·
+[Tests](#tests-and-verification) · [Troubleshooting](#troubleshooting)
+
+## Project status
+
+| Capability | Current behavior |
+|---|---|
+| Owner login | Working: local password setup/recovery, protected financial APIs, sessions, logout and CSRF protection. |
+| CSV import | Working: normalized financial CSVs and supported platform/supplier exports, validation, duplicate detection and rejection reports. |
+| Financial baseline | Working: backend Decimal/integer-cent calculations, contribution margin and missing-input reporting. |
+| Findings and evidence | Working: supplied contract-rate checks, promotion review, fee patterns, supplier price observations and duplicate-document inquiries. |
+| Connected Guru | Working deterministic explanation, using the same stored baseline and evidence. It is not a live LLM conversation. |
+| Scenarios | Working conditional price, ingredient-cost and commission comparisons, with persisted results and assumptions. |
+| Connected execution | **Simulated:** explicit approval, expiry, freshness and repeat checks; no external API or menu change. |
+| Dispute preparation | Working owner-reviewed drafts and text download. No automatic submission or guaranteed recovery. |
+| External AI | Optional, privacy-gated OpenRouter mapping, historical Q&A and receipt/PDF extraction. Provider contracts tested with mocks. |
+| Square | Separate optional **sandbox-only** sync and reviewed actions. Tests use fake transport, not production credentials. |
+| Hosted/multi-location use | Incomplete. Single-owner login is not organization/location isolation or production deployment readiness. |
+
+## Quick start
+
+### Requirements
+
+- **Python 3.9+** with its standard `sqlite3`, `ssl`, `hashlib` and `zoneinfo` modules.
+- **Git** to clone or update the repository.
+- A modern browser.
+
+There is no frontend build, npm install or application `requirements.txt` to run.
+Node.js and Playwright are needed only for the optional test commands below.
+Systems without an IANA time-zone database may need `tzdata`; see troubleshooting.
+
+### 1. Get the code
+
+For a fresh checkout:
 
 ```bash
-# One-time setup: enter a new password of at least 14 characters.
-python3 owner_auth.py bootstrap
-
-# Explicitly blank credentials override any local .env values.
-OPENROUTER_API_KEY='' SQUARE_ACCESS_TOKEN='' PROFITSHIELD_AI_PRIVACY_APPROVED='' \
-BACKHOUSE_DB=/tmp/profitshield-hackathon.db python3 server.py
+git clone https://github.com/bhuvanakanakam/profitshield.git
+cd profitshield
 ```
 
-Open **http://localhost:8000/#demo**, sign in with the owner password, and choose
-**Load example restaurant**. The app uses light sage buttons, a guided financial
-workspace and an in-app **How it works** tour. See [the user guide](docs/USER_GUIDE.md)
-for every page and workflow.
-The table must show $10,000 gross sales, $9,200 net sales, $4,700 contribution
-margin and **51.09%**. Accounting profit is **Unavailable — operating expenses
-incomplete**. Follow [DEMO_SCRIPT.md](DEMO_SCRIPT.md) for the three-minute journey
-and [DEMO_VERIFICATION.md](DEMO_VERIFICATION.md) for actual tested status.
+For an existing checkout, preserve any local changes first, then:
 
-For a different port, set `PORT` and open `http://localhost:<port>`. If using
-`127.0.0.1` in the browser instead of `localhost`, set
-`PROFITSHIELD_ORIGIN=http://127.0.0.1:8000` to match exactly. Writes require the
-configured Origin and JSON. No CORS permission is granted to other sites.
+```bash
+git fetch origin
+git switch main
+git pull --ff-only origin main
+```
 
-The existing first-run sample importer remains: 1,776 historical synthetic orders
-and supplier documents load into the original tables. The connected demo uses
-separate SQLite tables in that **same database**, so reset of the connected demo
-does not discard the historical explorer's data.
+Stop an older running server with **Ctrl+C** before starting the updated app.
 
-## Repeat and reset
+### 2. Set your owner password once
 
-**Reset demo** asks for confirmation and clears only its normalized
-transactions, documents, scenarios, simulated history and saved dispute drafts.
-Then **Load example restaurant** restores the deterministic reference.
-Loading the golden restaurant also clears prior connected scenarios/history.
-Reloading the page preserves data, scenarios, actions and generated dispute drafts.
-Guru text is a transient explanation and can be generated again.
+macOS/Linux:
 
-The original Connections page still supports the original `/api/reset`, which
-resets the **whole database**, including both workspaces, and reimports the
-historical samples. Use connected reset during the presentation.
+```bash
+python3 owner_auth.py bootstrap
+```
 
-## Six connected workflows
+Windows PowerShell:
 
-| Workflow | Implementation and limits |
+```powershell
+python owner_auth.py bootstrap
+```
+
+Choose a password of **14–1024 characters** and enter it twice. Terminal input is
+hidden while typing. There is no default password. If an owner already exists,
+use that password instead of bootstrapping again.
+
+### 3. Start the server
+
+macOS/Linux:
+
+```bash
+python3 server.py
+```
+
+Windows PowerShell:
+
+```powershell
+python server.py
+```
+
+Open **http://localhost:8000/#demo**, sign in, and select **Load example restaurant**.
+Keep the terminal running while using the app. No `.env` file or provider key is
+required for this flow.
+
+To explicitly disable optional providers even if an existing `.env` contains keys:
+
+```bash
+# macOS/Linux
+OPENROUTER_API_KEY='' SQUARE_ACCESS_TOKEN='' PROFITSHIELD_AI_PRIVACY_APPROVED='' python3 server.py
+```
+
+```powershell
+# Windows PowerShell
+# A space keeps the override present on older PowerShell versions; keys are trimmed.
+$env:OPENROUTER_API_KEY=" "
+$env:SQUARE_ACCESS_TOKEN=" "
+$env:PROFITSHIELD_AI_PRIVACY_APPROVED="false"
+python server.py
+```
+
+## Features
+
+### Financial workspace: the connected workflow
+
+This is the default `#demo` page. It uses a normalized dataset and connects six
+steps around the same financial baseline:
+
+1. **Import records.** Choose or drop a synthetic CSV. Review accepted records,
+   skipped duplicates and rejected rows. Unknown costs remain unknown.
+2. **Inspect findings.** Follow a commission discrepancy, promotion, recorded fee,
+   invoice price change or duplicate document to its source evidence.
+3. **Ask Guru.** Explain a finding using the same records and exact baseline.
+   Responses are explicitly labelled deterministic; no external AI is used here.
+4. **Compare scenarios.** Change uniform menu-price %, ingredient-cost % or
+   commission percentage points. Inspect before/after amounts and assumptions.
+5. **Review approval.** Propose a scenario and type `APPROVE SIMULATION ONLY`.
+   The backend checks the baseline, ten-minute expiry and repeat submission.
+   History becomes `Proposed → Approved → Simulated`, never externally Verified.
+6. **Prepare a draft.** Review and download a conditional dispute or reconciliation
+   inquiry. The owner decides whether and how to submit it.
+
+Incomplete variable costs prevent a meaningful scenario. Existing scenarios and
+proposals are tied to their original baseline; changed data requires recalculation.
+Failures remain visible, and a failed refresh does not replace the last loaded
+baseline with invented or fallback data.
+
+### Historical books
+
+The sidebar also preserves the original sample explorer:
+
+| Page | Purpose |
 |---|---|
-| Ingest and normalize | Upload `demo_data/golden.csv` or known DoorDash, Uber Eats, Grubhub, Square or supplier CSV exports. Explicit rejection reports and logical transaction dedupe; renamed identical imports do not inflate totals. Missing expenses/refunds remain unknown. Known exports do not prove contract rates, consumed food costs or accounting profit. |
-| Diagnostic Guru | Uses the same persisted rows, cent totals, findings and evidence as the dashboard. Clearly labeled **deterministic fallback**, not generated AI. Can explain an overcharge/ingredient finding, compare total commissions and summarize exposure. One-period data does not establish why margin changed. |
-| Proactive Auditor | Supplied contractual basis/rate checks, unexpected restaurant-funded promotions, recorded/repeated fees, confirmed invoice unit-price changes and suspected duplicate documents. Stable finding IDs and evidence; no guaranteed recovery or payment claims. |
-| Simulation | Uniform price, aggregate ingredient-cost and commission-rate scenarios; exact before/after cents, named comparisons and explicit unchanged-demand assumptions. Commission response follows supplied terms. Missing costs/terms prevent unsafe calculation. |
-| Execution | Persisted `Proposed → Approved → Simulated` history. Exact phrase, ten-minute expiry, baseline freshness and repeat rejection. **No external API calls or menu changes** in this connected workflow; never marked externally Verified. Stale/expired proposals become Failed. |
-| Disputes | Deterministic conditional claim amounts, supplied contract assumptions, supporting transactions, evidence references and owner-review status. Drafts persist. Never submitted; duplicate documents generate a reconciliation inquiry with **no monetary claim**. |
+| Overview | Reporting-week metrics, estimated contribution-margin bridge, evidence, trends and channel breakdown. |
+| Money leaks | Historical findings and owner-entered open/disputed/handled status. Handling status is not independently verified recovery. |
+| Workflow assistants | Ingestion, audit, explanation, simulation, execution review and dispute tools. These are workflows, not six independent background LLM agents. |
+| Payouts | Delivery-order records filtered by channel, contract discrepancy, promotion or error charge. |
+| Invoices | Supplier invoice observations and ingredient prices. Document copies are not proof of payments. |
+| Menu & margins | Recipe-based cost and in-store/delivery margin estimates. |
+| Connections | Historical CSV imports, mapping/deduplication/redaction reports, receipt review and optional Square sandbox controls. |
 
-The sidebar preserves the original seven views. Their contribution estimates now
-come from the same Python cent engine via `legacy_finance.py`; price simulations
-use `/api/simulate`, not a separate browser formula. Those historical exports
-still lack full refunds/variable expenses. Recipe consumption estimates and
-zero assumptions are visibly disclosed; these are not complete accounting data.
-The connected normalized workspace does **not** assume missing costs are zero.
+**There are two datasets.** Historical imports and the normalized Financial
+workspace share a SQLite file but use separate tables. Uploading through
+Connections updates historical books; uploading in Financial workspace updates
+its normalized records. Neither upload silently populates the other experience.
 
-## Financial definitions and signs
+Historical estimates use recipe-based food consumption and assume unreported
+refunds and other variable costs are zero. The normalized workspace does **not**
+fill missing costs with zero. Neither should be presented as complete accounting
+profit without the required inputs.
 
-`financial_engine.py` is authoritative. Normalized amounts enter as dollar
-strings with at most two decimal places, become integer cents, and remain cents
-in JSON/SQLite. Inputs must be finite. Rates use `Decimal`; rates are fractions
-(e.g. `0.20`), not percentages. Rounding is **half up**. Contractual commission is
-rounded per transaction; historical recipe estimates round at the period total;
-incremental item-price scenarios round once per channel and sum displayed cents.
+### Interface and usability
 
-| Metric | Definition |
+- Responsive workspace, historical dashboards and styled owner login.
+- Light sage primary buttons with dark text, visible focus and reduced-motion support.
+- **How it works** tour and a keyboard skip link.
+- Evidence drawers with keyboard focus containment and return.
+- Explicit empty, incomplete-data, loading, error and retry states.
+- Receipt inputs stay available after a failed save; corrected imports can be retried.
+- Draft downloads and persisted scenarios/action histories.
+
+See the [user guide](docs/USER_GUIDE.md) for each page and control.
+
+## Try the demo
+
+### Reference numbers
+
+Select **Load example restaurant** after signing in. The four synthetic financial
+rows in [`demo_data/golden.csv`](demo_data/golden.csv) reconcile to:
+
+| Component | Amount |
+|---|---:|
+| Gross sales | $10,000.00 |
+| Refunds | −$300.00 |
+| Restaurant-funded promotions | −$500.00 |
+| **Net sales** | **$9,200.00** |
+| Commissions | −$1,500.00 |
+| Food costs | −$2,800.00 |
+| Other variable costs | −$200.00 |
+| **Contribution margin** | **$4,700.00** |
+| **Contribution-margin rate** | **51.09%** |
+| Accounting profit | Unavailable: operating expenses incomplete |
+
+The $100 platform-funded promotion is informational; it is not another deduction.
+The $100 commission discrepancy is already included in commission costs; it is
+not subtracted twice.
+
+### A short walkthrough
+
+1. Load the example and inspect the financial-baseline disclosure.
+2. Open commission finding evidence for `DoorDash:G-DD`: $4,000 gross, a supplied
+   20% gross-sales contract rate, and $900 charged versus $800 expected.
+3. Select **Explain finding**. Guru shows the same $4,700 margin and a **$100
+   conditional exposure**, not recovered money.
+4. Calculate the default **5% price-change scenario**: $5,127.50 contribution
+   margin, a **$427.50 conditional improvement on this dataset**.
+5. Propose it, review the assumptions, and approve the simulation with the exact phrase.
+6. Prepare/download the commission draft. Compare the duplicate-document inquiry:
+   it has no established payment claim.
+7. Reload to see persisted data. Import `golden.csv` again: four duplicate rows
+   are skipped and the baseline is unchanged.
+
+The scenario holds demand and quantities constant and keeps refunds/promotions
+fixed in dollars. It is not a forecast, realized saving, or weekly/annual promise.
+See [DEMO_SCRIPT.md](DEMO_SCRIPT.md) for the narrated judge journey.
+
+### Sample files
+
+| Location | Use |
 |---|---|
-| Gross sales | Sales before separately represented refunds and restaurant-funded promotions, excluding taxes/tips. Signed sales adjustments retain their original sign. Never supply an already-netted amount as gross. |
-| Refunds / credits | Positive refunded amounts reduce revenue; negative values reverse/refund a deduction. |
-| Restaurant-funded promotions | Positive merchant-funded deductions; never include the platform-funded portion. Approval evidence is separate. |
-| Platform-funded promotions | Informational; does not reduce restaurant revenue under this schema. |
-| Net sales | Gross − refunds − restaurant-funded promotions. |
-| Platform commissions | Actual commission costs, including any suspected overcharge. Negative commission credits remain negative. |
-| Commission overcharges | Informational subset: actual commission minus rounded contractual commission, floored at zero for positive sales. Supplied `gross_sales` or `net_sales` contractual basis. Unknown terms produce unavailable exposure, not an invented rate. **Never subtracted a second time.** |
-| Other platform fees | Separate costs only; do not also encode the same charge as a refund or netted sales. Repetition does not prove an erroneous fee. |
-| Food costs | Consumed food cost supplied in normalized rows. Invoice purchases alone do not establish consumption. |
-| Other variable costs | Separate variable costs, not already included in food, fees or commissions. |
-| Contribution margin | Net sales − commissions − other platform fees − food costs − other variable costs. Missing required fields make it unavailable. |
-| Contribution margin % | Contribution margin / net sales × 100. Zero net sales: unavailable. Display rounded to two decimal places. |
-| Accounting profit | Contribution margin − complete operating expenses. The reference dataset lacks operating expenses: unavailable. The Python calculation API accepts an explicitly complete expense total; the demo UI does not collect one. |
+| [`demo_data/golden.csv`](demo_data/golden.csv) | Complete four-row normalized reference for Financial workspace. |
+| [`demo_data/documents.json`](demo_data/documents.json) | Structured synthetic supplier observations loaded with the example. These are not a newly performed OCR extraction. |
+| [`demo_data/edge_cases.json`](demo_data/edge_cases.json) | Isolated missing-value, adjustment, duplicate and repeated-fee test cases. |
+| [`samples/`](samples/) | Historical DoorDash, Uber Eats, Grubhub, Square and supplier exports; 1,776 seeded orders across four weeks. |
+| [`samples/grubhub_export_unusual_columns.csv`](samples/grubhub_export_unusual_columns.csv) | Historical mapping/redaction/dedupe example. Reimport adds no orders and reports 100 personal fields removed. |
+| [`samples/receipt_restaurant_depot_2026-10-30.jpg`](samples/receipt_restaurant_depot_2026-10-30.jpg) | Synthetic receipt image for optional extraction. **Use sample receipt** demonstrates pre-read line review without AI. |
+| [`samples/sysco_invoice_SY-88214.pdf`](samples/sysco_invoice_SY-88214.pdf) | Synthetic multi-page invoice for optional privacy-approved extraction. |
 
-Costs/refunds are **positive deductions**; negative costs are credits. The engine
-cannot detect an owner incorrectly labeling already-netted source data: review
-source definitions. The normalized CSV schema makes each deduction explicit.
-Duplicate invoice documents never establish duplicate payments and never reduce
-margin. Suspected exposures may overlap and must not be summed as guaranteed loss.
+These files are visible in the repository, not exposed as arbitrary files by the
+application's HTTP server.
 
-## Data and architecture
+## Import format and financial rules
+
+### Normalized CSV
+
+Use [`demo_data/golden.csv`](demo_data/golden.csv) as the starting template. These
+headers must be present; financial cells may be empty when genuinely unknown:
 
 ```text
-Known/sample CSV or normalized CSV → validation + dedupe → SQLite prototype_state
-                                                              ↓
-                                  financial_engine.py (Decimal / integer cents)
-                                       ↓              ↓              ↓
-                              baseline/findings    scenarios     Guru / disputes
-                                                      ↓
-                                            explicit approval
-                                                      ↓
-                                      persistent simulated action history
+id,source,date,channel,gross_sales,refunds,restaurant_promotions,platform_promotions,commissions,other_platform_fees,food_costs,other_variable_costs
 ```
 
-- `server.py`: original HTTP server, importers, SQLite, optional integrations and
-  exact public-asset allowlist. No repository directory is public.
-- `financial_engine.py`: normalization, totals, contractual checks and scenarios.
-- `prototype.py`: connected workflow and SQLite persistence. Known-format column
-  definitions/date parsing are reused from the existing server.
-- `legacy_finance.py`: adapter for the historical recipe-based estimates.
-- `index.html`: existing dashboard plus accessible connected workspace. Financial
-  baseline/price calculations are requested from the backend. New untrusted
-  values use DOM `textContent`.
-- `demo_data/`: deterministic `golden.csv`, invoice evidence in `documents.json`,
-  and **isolated** `edge_cases.json`. None is served as a public HTTP file.
-- `square_actions.py`: existing sandbox review, freshness, one-use and verification
-  guards, preserved and regression-tested with a fake transport.
+| Field | Meaning |
+|---|---|
+| `id` | Transaction identifier, unique within its channel. |
+| `source` | Provenance reference, such as a filename and row number. |
+| `date` | ISO date, `YYYY-MM-DD`. |
+| `channel` | `DoorDash`, `Uber Eats`, `Grubhub`, or `In-store`. |
+| Financial fields | Dollar amounts with at most two decimal places. Empty means unknown, not zero. |
+| `contract_rate` | Optional fraction such as `0.20`; required for applicable commission checks and commission-sensitive delivery scenarios. |
+| `contract_basis` | Optional `gross_sales` or `net_sales`; defaults to `gross_sales`. |
+| `promotion_approved` | Optional boolean `true`/`false`; defaults to false if the column is omitted. Use an explicit boolean when supplied. |
+| `fee_reason` | Optional text used to group recorded/repeated platform fees. |
 
-Schema migration is additive and automatic: `prototype_state`,
-`prototype_scenarios`, `prototype_actions`, `prototype_disputes`. Existing order,
-invoice and Square action tables are preserved. This single-instance demo stores
-its normalized dataset as bounded JSON; it is not an enterprise ledger.
+Connected CSV uploads are limited to **4 MiB** and **20,000 input rows**. Unknown
+layouts must be converted to normalized CSV; the connected import path does not
+invoke an LLM. Known platform exports can lack refunds, food consumption, complete
+variable costs or contract terms, so importing them may leave margin unavailable.
 
-## Optional integrations and privacy
+Identical transactions are deduplicated by channel/ID and financial content, not
+just filename. A conflicting duplicate is rejected rather than silently replacing
+stored data. Supplier CSVs can add invoice observations without transaction rows;
+transaction records are needed before requesting explanations or drafts.
 
-The connected demo **never calls an external LLM or a platform API**. AI is not
-needed for the judge flow. Optional pre-existing OpenRouter mapping, Q&A and
-receipt/PDF extraction remain behind an explicit privacy gate:
+### Definitions
 
-- `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_VISION_MODEL` select the
-  optional service. Even with a key, calls are blocked unless
-  `PROFITSHIELD_AI_PRIVACY_APPROVED=true` after owner-approved privacy policy.
-- PII redaction is best effort, **not** a guarantee that financial documents are
-  safe to transmit. Do not enable external AI for real financial records before
-  privacy approval. Receipt extraction still requires line review before save.
-- `SQUARE_ACCESS_TOKEN` must be a sandbox token. Server transport is pinned to
-  `https://connect.squareupsandbox.com` regardless of `SQUARE_ENV`; redirects
-  cannot change destination. Do not supply production credentials.
-- Existing Connections **Review 3 sandbox test orders** and price review controls
-  require a separate review and exact phrase. No real Square call was made during
-  this sprint; automated tests mock every transport, including read-back checks.
-- Delivery-app menu writes and dispute submission are not implemented.
+Normalized amounts are validated as finite dollar inputs, converted to integer
+cents, and calculated using `Decimal` and **half-up** rounding. Contractual
+commission rounds per transaction. Historical recipe estimates round at the period
+total; historical item-price increments round per channel and sum those cents.
 
-`BACKHOUSE_DB`, `STORE_TZ` (default America/New_York), `PORT`, and exact
-`PROFITSHIELD_ORIGIN` configure local execution. Local HTTP authentication is allowed only on
-`localhost` or `127.0.0.1`; the server binds only to `127.0.0.1`. An HTTPS origin
-uses Secure cookies; a remote HTTP origin is rejected. `.env` is optional and private;
-real environment variables take precedence. Never commit credentials or databases.
+```text
+Net sales = Gross sales − Refunds − Restaurant-funded promotions
 
-## Checks
+Contribution margin = Net sales − Commissions − Other platform fees
+                      − Food costs − Other variable costs
+
+Contribution-margin rate = Contribution margin / Net sales × 100
+
+Accounting profit = Contribution margin − Complete operating expenses
+```
+
+- Gross excludes tax/tips and must not already be net of separately supplied deductions.
+- Costs/refunds are positive deductions; negative costs represent credits.
+- Platform-funded promotions are informational under the normalized schema.
+- Suspected overcharges are a subset of commission, not another margin deduction.
+- Food purchases on an invoice do not establish food consumption or payment.
+- Duplicate documents do not establish duplicate payments and never reduce margin.
+- Missing required inputs make the affected result unavailable. A zero net-sales
+  denominator makes the margin percentage unavailable.
+- Suspected exposures can overlap; do not sum them as guaranteed recoveries.
+
+The Python calculation function accepts complete operating expenses separately;
+the current UI does not collect them. Source semantics and supplied contract terms
+still require owner review. The app cannot infer that a mislabeled gross figure
+was already netted elsewhere.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    U[Owner login] --> S[Python HTTP server]
+    N[Normalized or supported CSV] --> P[Connected ingestion and dedupe]
+    P --> DB[(SQLite connected tables)]
+    DB --> F[Decimal and integer-cent financial engine]
+    F --> B[Baseline and evidence findings]
+    B --> G[Deterministic Guru and dispute drafts]
+    F --> C[Conditional scenarios]
+    C --> A[Explicit approval]
+    A --> H[Persisted simulated action history]
+    O[Historical exports and reviewed receipts] --> I[Historical importers]
+    I --> HD[(Historical SQLite tables)]
+    HD --> L[Recipe-based estimate adapter]
+    L --> F
+    S --> P
+    S --> I
+```
+
+### Repository structure
+
+| Path | Responsibility |
+|---|---|
+| [`index.html`](index.html) | Entire responsive frontend: navigation, charts, forms, evidence/review panels, assistant and help. No frontend framework/build step. |
+| [`server.py`](server.py) | Standard-library HTTP service, APIs, database setup, historical imports, optional integrations, session/CSRF enforcement and asset allowlist. |
+| [`owner_auth.py`](owner_auth.py) | Owner bootstrap/recovery, password hashing, session storage, expiry, login throttling and login screen. |
+| [`financial_engine.py`](financial_engine.py) | Canonical normalized validation, cent totals, commission checks, findings and scenarios. |
+| [`prototype.py`](prototype.py) | Connected ingestion and persisted baseline/scenario/proposal/action/draft workflows. |
+| [`legacy_finance.py`](legacy_finance.py) | Historical recipe-based estimates and explicit missing-cost assumptions. |
+| [`input_security.py`](input_security.py) | Request bounds, allowed fields/values, date/number validation, route lists and throttling. |
+| [`square_actions.py`](square_actions.py) | Separate expiring, one-use review plans for sandbox operations. |
+| [`tests/`](tests/) | Unit, HTTP, import, integration, financial bridge and browser regression tests. |
+| [`.github/workflows/tests.yml`](.github/workflows/tests.yml) | Python/Node CI and development-branch policy. |
+
+### API groups
+
+Use the authenticated browser session. Financial reads require a valid session;
+POST operations additionally require JSON, the exact configured Origin and its
+session-specific `X-CSRF-Token`. Login creates a session; its request has no prior
+session/CSRF requirement but still enforces origin and bounded JSON.
+
+| Routes | Responsibility |
+|---|---|
+| `GET /api/health` | Health; anonymous responses omit integration details. |
+| `POST /api/auth/login`, `GET /api/auth/session`, `POST /api/auth/logout` | Login, session/CSRF information and logout. |
+| `GET /api/data` | Historical records and server-provided financial model. |
+| `POST /api/import`, `/api/invoices`, `/api/extract` | Historical CSV import, reviewed invoice save and optional image/PDF extraction. |
+| `POST /api/ask`, `/api/simulate` | Historical assistant and backend item-price calculation. |
+| `GET /api/prototype` | Persisted connected workspace, baseline, findings, scenarios, actions and drafts. |
+| `POST /api/prototype/load-golden`, `/api/prototype/reset`, `/api/prototype/import` | Example loading, connected reset and normalized/supported CSV import. |
+| `POST /api/prototype/guru`, `/api/prototype/simulate` | Connected explanations and scenarios. |
+| `POST /api/prototype/propose`, `/api/prototype/approve`, `/api/prototype/dispute` | Proposal, explicitly simulated approval and conditional draft preparation. |
+| `POST /api/square/sync` | Optional Square sandbox order sync. |
+| `POST /api/menu/preview` → `/api/menu/apply` | Separate reviewed sandbox menu-price operation. |
+| `POST /api/square/seed/preview` → `/api/square/seed` | Separate review and confirmation for three sandbox test orders. |
+| `POST /api/reset` | Whole restaurant-database reset, not the connected Reset demo button. |
+
+## Authentication, storage and reset
+
+Passwords are hashed with **scrypt**. Session tokens are generated randomly and
+stored only as hashes. Cookies are **HttpOnly** and **SameSite=Strict**; HTTPS uses
+**Secure** cookies. Sessions expire after **30 minutes idle** or **12 hours total**.
+Repeated failed logins are throttled. Sign out revokes the current session.
+
+Plain HTTP authentication is permitted only on a loopback origin. Remote HTTP is
+rejected. The server binds to `127.0.0.1`; HTTPS cookie support alone does not turn
+this into a configured production deployment. There is no remote signup, default
+password or remote password-recovery endpoint.
+
+For a forgotten owner password, run locally:
+
+```bash
+python3 owner_auth.py recover
+```
+
+This intentionally revokes every session. On Windows, substitute `python`.
+
+Default storage:
+
+| File/table group | Contents |
+|---|---|
+| `backhouse.db` | Restaurant data and imported historical records. Created/seeded on first start. |
+| `prototype_state` | Bounded normalized rows and supplier observations as JSON in the restaurant database. |
+| `prototype_scenarios`, `prototype_actions`, `prototype_disputes` | Connected scenarios, simulated action history and drafts. |
+| Historical tables | Orders, errors, invoice lines, mappings, import reports, menu references and separate Square review plans. |
+| `owner-auth.sqlite3` | Separate owner password hash, session hashes and login-attempt state. |
+
+Connected financial records use integer-cent values; historical tables retain
+source values and the adapter constructs cent-based estimates. Schema creation
+is additive/idempotent; existing restaurant tables are preserved.
+
+| Action | What it resets |
+|---|---|
+| **Refresh** | Reloads saved state; does not reset data. |
+| **Reset demo** | Connected records, scenarios, actions and drafts after confirmation. Historical books and owner password remain. |
+| **Load example restaurant** | Replaces connected state/history with the synthetic reference, after confirmation when data already exists. |
+| `POST /api/reset` | Whole restaurant database, including connected tables, followed by historical reseeding. Authentication storage is separate. |
+| Owner password recovery | Password and sessions; restaurant records remain. |
+
+Reloading preserves connected records/scenarios/actions/drafts. Guru explanation
+text is transient and can be generated again. Historical handled/disputed UI status
+is browser-local; it is not a verified external ledger.
+
+## Configuration
+
+`.env` is optional. For a new local configuration, copy [`.env.example`](.env.example)
+to `.env` and edit it; keep an existing `.env` rather than overwriting it. Exported
+environment variables take precedence over `.env` values read by the server.
+Never commit keys, financial databases or authentication storage.
+
+| Variable | Default / purpose |
+|---|---|
+| `PORT` | `8000`. |
+| `PROFITSHIELD_ORIGIN` | `http://localhost:<PORT>`. Must exactly match the browser origin for writes. |
+| `BACKHOUSE_DB` | `backhouse.db` in the repository. Optional alternative restaurant-data path. |
+| `PROFITSHIELD_AUTH_DB` | `owner-auth.sqlite3` in the repository. Export the same path for bootstrap/recovery and server, or use CLI `--db`. |
+| `PROFITSHIELD_LOCAL_HTTP` | Automatically enabled for HTTP localhost/127.0.0.1. Explicit `1` still cannot authorize remote HTTP. HTTPS defaults to secure-cookie mode. |
+| `STORE_TZ` | `America/New_York`. Requires time-zone data on the host. |
+| `OPENROUTER_API_KEY` | Empty/off unless configured. |
+| `OPENROUTER_MODEL` | `google/gemini-2.5-flash`; optional mapping/Q&A model. |
+| `OPENROUTER_VISION_MODEL` | Defaults to `OPENROUTER_MODEL`; optional receipt/PDF model. |
+| `PROFITSHIELD_AI_PRIVACY_APPROVED` | Off unless set to `true` after owner-approved privacy policy. |
+| `SQUARE_ACCESS_TOKEN` | Empty/off unless a **sandbox** token is configured. |
+| `SQUARE_VERSION` | `2024-10-17`; Square API version header. |
+| `SQUARE_ENV` | Cannot select production; transport remains pinned to the sandbox endpoint. |
+
+For example, a different local port on macOS/Linux:
+
+```bash
+PORT=8001 python3 server.py
+```
+
+PowerShell:
+
+```powershell
+$env:PORT="8001"
+python server.py
+```
+
+Open `http://localhost:8001/#demo`. If `PROFITSHIELD_ORIGIN` was explicitly set
+elsewhere, update it to match. If browsing with `127.0.0.1`, configure that exact
+origin instead of `localhost`.
+
+## Optional integrations
+
+### OpenRouter
+
+The historical path supports optional unfamiliar-column mapping, tool-based Q&A
+and receipt/image/PDF extraction. Configure a compatible model/key and set
+`PROFITSHIELD_AI_PRIVACY_APPROVED=true` only after privacy approval.
+
+Redaction is best effort, not proof that a document is safe to transmit. Use
+synthetic fixtures for development; do not send real records before approval.
+Extracted receipt lines still require owner review. The pre-read sample receipt
+needs no key. Enabling OpenRouter does **not** turn the connected Guru into a
+live LLM: that separate workflow remains deterministic.
+
+### Square sandbox
+
+Configure a Square **sandbox** access token to sync sandbox orders. Test-order
+creation and catalog changes require a reviewed plan and exact confirmation:
+
+- `CREATE 3 SANDBOX ORDERS` for the reviewed test baskets.
+- `APPLY SANDBOX PRICES` for a reviewed price plan.
+
+Plans expire after five minutes and are claimed once before an external write.
+Stale, repeated and ambiguous outcomes are not automatically retried. This is a
+separate integration from the connected workspace's ten-minute simulated proposal.
+Production endpoints/credentials are not supported. Delivery-app menu edits and
+dispute submission remain manual; no live delivery-platform API is connected.
+
+## Tests and verification
+
+Application use requires Python only. Tests additionally use **Node.js 24**;
+optional browser checks need Playwright for Python and Chromium installed.
 
 ```bash
 python3 -m unittest discover -s tests -v
 node --test tests/js/*.test.cjs
-# Optional, with Playwright and Chromium already installed:
+```
+
+Optional end-to-end/browser checks:
+
+```bash
 python3 tests/browser_prototype.py
+python3 tests/browser_owner_auth.py
 python3 tests/browser_input_security.py
 python3 tests/browser_square_guard.py
-python3 tests/browser_owner_auth.py
 python3 tests/browser_final_ui.py
 ```
 
-Tests use temporary databases, synthetic records and mocked/blocked outbound
-HTTP; no credentials are needed. The existing GitHub Actions workflow discovers
-the Python and JavaScript tests for PRs. Browser tests are optional local checks;
-they are not currently installed/run in CI. See [tests/README.md](tests/README.md).
+Final application verification recorded **112 passing Python tests, seven passing
+JavaScript tests, and five passing browser journeys**. GitHub CI passed Python
+3.9, Python 3.12 and Node for the final UI/login code. See the
+[verification record](docs/FINAL_VERIFICATION.md) and
+[successful CI run](https://github.com/bhuvanakanakam/profitshield/actions/runs/42419891051).
 
-Development PRs target **development**, never main. No automatic merge/deployment.
-See [DEMO_VERIFICATION.md](DEMO_VERIFICATION.md) for limits and migration notes.
+Coverage includes real CLI startup with temporary storage, login/logout/expiry,
+anonymous API denial, CSRF, financial fixtures, imports/dedupe/redaction, receipt
+save retry, evidence, scenarios, approval freshness/repeats, draft download,
+persistence/reset, stored-input escaping, failed-backend recovery, keyboard
+controls and all eight pages at 390/768/1024/1440px.
 
-## Owner password and session
+Tests use temporary databases and synthetic data. External AI/Square transports
+are mocked or blocked; no real provider write or live AI run is claimed. Browser
+checks are currently local, not part of the GitHub Actions installation/job.
+Accessibility checks are partial, not a full WCAG or screen-reader certification.
 
-Set the password once with `python3 owner_auth.py bootstrap`. If the owner already
-exists, use the existing password. To intentionally replace a forgotten password,
-run `python3 owner_auth.py recover`; this revokes all sessions. There is no default
-password, remote registration, or remote password-reset endpoint.
+For opt-in screenshots:
 
-Passwords are hashed with scrypt; only hashed session tokens are stored. Sessions
-expire after 30 minutes idle or 12 hours total. Financial reads require a valid
-session; mutations additionally require the session CSRF token and exact origin.
-Sign out revokes the session. Authentication storage is separate from restaurant
-records, so resetting demo data does not reset the password.
-
-Default setup needs only Python and the two commands above. For custom auth
-storage, use the same `PROFITSHIELD_AUTH_DB` environment variable for bootstrap
-and server, or pass `--db` to bootstrap. Do not commit the auth database.
-
-PowerShell launch after one-time password setup:
-
-```powershell
-$env:OPENROUTER_API_KEY=""
-$env:SQUARE_ACCESS_TOKEN=""
-$env:PROFITSHIELD_AI_PRIVACY_APPROVED=""
-python server.py
+```bash
+PROFITSHIELD_UI_SCREENSHOTS=/tmp/profitshield-ui python3 tests/browser_final_ui.py
 ```
 
-For macOS/Linux, the blank-credential command under Launch runs the local demo.
-The `PROFITSHIELD_LOCAL_HTTP` flag can explicitly override loopback mode; it does
-not permit insecure authentication to a remote HTTP host.
+See [tests/README.md](tests/README.md) for fixtures and detailed commands.
+
+## Troubleshooting
+
+| Problem | What to check |
+|---|---|
+| `python3` is not found | On Windows try `python` or `py`; install Python 3.9+ if needed. |
+| `ZoneInfoNotFoundError` | Your host may lack IANA time-zone data. Install it with `python -m pip install tzdata` (use `python3` where appropriate), then restart. |
+| Owner already exists | Use the existing password. Run local `owner_auth.py recover` only to intentionally replace it and revoke sessions. |
+| Sign-in fails | Check the password and that bootstrap/server use the same auth database. After repeated attempts, wait a minute before retrying. |
+| Address/port already in use | Stop the older server with Ctrl+C, or select another `PORT` and matching browser origin. |
+| A write returns 403 | Use the exact configured origin, including hostname/port. Sign in again if needed. Browser POSTs carry the session CSRF token. |
+| New UI is missing | Confirm `git branch --show-current` is `main`, pull updates, restart the Python server and reload the browser. |
+| Margin is unavailable | Inspect missing inputs. Known platform exports may not contain refunds or all variable costs; missing does not mean zero. |
+| Import changed a different page | Financial workspace and historical Connections imports target separate datasets. |
+| Simulation/proposal is stale | Recalculate against current data and create a fresh proposal. Do not retry an expired or consumed approval. |
+| AI or receipt extraction is unavailable | The core demo still works. External features need both a configured key and privacy approval. |
+| Square is not connected | The connected simulation needs no Square token. For optional integration, use sandbox credentials only. |
+| The database cannot load | Check the visible error and storage permissions. Use Retry connection; the UI does not silently replace failed live data with a demo. |
+
+## Development and documentation
+
+Start normal tasks from the latest `development`, use a focused working branch,
+and target `development` in task PRs. Main promotion/release requires separate
+approval; there is no automatic merge or deployment. Read
+[AGENTS.md](AGENTS.md) and [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+- [User guide and backend responsibilities](docs/USER_GUIDE.md)
+- [Current UI/login verification and limits](docs/FINAL_VERIFICATION.md)
+- [Narrated demo script](DEMO_SCRIPT.md)
+- [Tests and fixture documentation](tests/README.md)
+- [Historical initial-prototype verification](DEMO_VERIFICATION.md)
+
+Remaining work includes complete operating-expense collection, payment
+reconciliation, stronger source/contract validation, organization/location
+isolation, deployment hardening and owner pilots. SQLite JSON state and in-process
+locking serve a local single instance; they are not a horizontally scaled ledger.
+Real financial records and production platform actions are outside the tested
+synthetic demo.
