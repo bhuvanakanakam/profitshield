@@ -151,7 +151,7 @@ class PublicAssetTests(HTTPFixture):
         for path in ['/', '/.env', '/backhouse.db?download=1', '/api/health']:
             with self.subTest(path=path):
                 with socket.create_connection(self.httpd.server_address, timeout=5) as conn:
-                    conn.sendall(('HEAD ' + path + ' HTTP/1.0\r\nHost: localhost\r\nCookie: '+self.auth.cookie_name+'='+self.token+'\r\n\r\n').encode())
+                    conn.sendall(('HEAD ' + path + ' HTTP/1.0\r\nHost: localhost\r\nCookie: '+'unused'+'\r\n\r\n').encode())
                     chunks = []
                     while True:
                         chunk = conn.recv(65536)
