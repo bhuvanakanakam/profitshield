@@ -3,12 +3,12 @@
 Restaurant financial intelligence: import evidence, inspect suspected leakage,
 explain the numbers, compare a scenario, explicitly approve a **simulated** action,
 and prepare an owner-reviewed dispute draft. The connected hackathon workspace
-uses one backend financial engine; it does not require credentials or an LLM.
+uses one backend financial engine; it requires no external API credentials or LLM.
 
 This is a **local synthetic prototype**, not a hosted accounting or payments
-system. It binds to `127.0.0.1`. Owner authentication and organization/location
-isolation are not implemented on this development base: do not expose this branch
-publicly, use production credentials, or load customer records.
+system. It binds to `127.0.0.1`. Owner authentication is required;
+organization/location isolation remains incomplete. Do not expose this
+branch publicly, use production credentials, or load customer records.
 
 ## Launch the judge demo
 
@@ -16,12 +16,19 @@ Python **3.9+**, standard library only. No application dependencies to install.
 From the repository root:
 
 ```bash
+# One-time owner setup: enter a new local password at the prompt.
+python3 owner_auth.py bootstrap
+
 # Explicitly blank credentials override any local .env values.
 OPENROUTER_API_KEY='' SQUARE_ACCESS_TOKEN='' PROFITSHIELD_AI_PRIVACY_APPROVED='' \
+PROFITSHIELD_LOCAL_HTTP=1 PROFITSHIELD_ORIGIN=http://localhost:8000 \
 BACKHOUSE_DB=/tmp/profitshield-hackathon.db python3 server.py
 ```
 
-Open **http://localhost:8000/#demo**. Choose **Load synthetic golden restaurant**.
+Open **http://localhost:8000/#demo**, sign in with the password you just set,
+and choose **Load example restaurant**. If an owner already exists, use the
+existing password; use `python3 owner_auth.py recover` only to intentionally
+replace a forgotten password and revoke its sessions.
 The table must show $10,000 gross sales, $9,200 net sales, $4,700 contribution
 margin and **51.09%**. Accounting profit is **Unavailable — operating expenses
 incomplete**. Follow [DEMO_SCRIPT.md](DEMO_SCRIPT.md) for the three-minute journey
