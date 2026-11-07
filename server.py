@@ -1345,7 +1345,7 @@ if __name__ == "__main__":
     print(f"ProfitShield on http://localhost:{PORT}")
     print(f"  AI: {'on, ' + MODEL if KEY else 'off (set OPENROUTER_API_KEY)'}")
     print(f"  Square: {'on, ' + SQUARE_BASE if SQUARE_TOKEN else 'off (set SQUARE_ACCESS_TOKEN for live POS sync)'}")
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     httpd.owner_auth = auth
 
     try:
