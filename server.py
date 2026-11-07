@@ -17,6 +17,7 @@ import csv
 import io
 import copy
 import hashlib
+import hmac
 import math
 import secrets
 import socket
@@ -37,6 +38,9 @@ import prototype
 import legacy_finance
 from financial_engine import price_increment, commission_overcharge, cents as financial_cents
 from square_actions import ActionError, PlanStore, fingerprint
+from input_security import (BODY_LIMIT, ROW_LIMIT, CHANNELS, UNITS, POST_ROUTES, EXPENSIVE_ROUTES,
+                            RequestLimiter, validate_origin, validate_payload, bounded_json, number,
+                            text as checked_text, invoice_line, validate_tool_args, iso_date)
 
 from input_security import (BODY_LIMIT, ROW_LIMIT, CHANNELS, UNITS, POST_ROUTES, EXPENSIVE_ROUTES,
                             RequestLimiter, validate_origin, validate_payload, bounded_json, number,
@@ -57,6 +61,8 @@ def _load_env(path):
 
 
 _load_env(ROOT / ".env")
+# Load auth configuration after .env, without weakening the common input boundary.
+from owner_auth import AUTH_PATH, LOGIN_PAGE, OwnerAuth
 SAMPLES = ROOT / "samples"
 DB_PATH = Path(os.environ.get("BACKHOUSE_DB", ROOT / "backhouse.db"))
 KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
@@ -1190,6 +1196,8 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(obj, allow_nan=False).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
         if code == 429:
             self.send_header("Retry-After", "60")
         self.send_header("Cache-Control", "no-store")
@@ -1207,6 +1215,9 @@ class Handler(BaseHTTPRequestHandler):
         # Match canonical URL paths only. Do not decode or normalize untrusted
         # paths into filesystem names (including encoded traversal/separators).
         path = self.path.split("?", 1)[0].split("#", 1)[0]
+        auth = self.server.owner_auth
+        token = auth.token_from_cookie(self.headers.get('Cookie'))
+        authenticated = auth.authorized(token)
         if path == "/api/health":
             return self._json(200, {"ok": True, "ai": bool(KEY and EXTERNAL_AI_APPROVED), "model": MODEL, "backend": True,
                                     "square": bool(SQUARE_TOKEN)})
@@ -1320,7 +1331,16 @@ class Handler(BaseHTTPRequestHandler):
             super().log_message(fmt, *args)
 
 
+def configured_auth():
+    if AUTH_PATH.resolve() == DB_PATH.resolve():
+        raise ValueError("Authentication and restaurant databases must use separate paths")
+    return OwnerAuth(AUTH_PATH, os.environ.get("PROFITSHIELD_ORIGIN", ""),
+                     local_http=os.environ.get("PROFITSHIELD_LOCAL_HTTP") == "1")
+
+
 if __name__ == "__main__":
+    auth = configured_auth()
+    local_http = os.environ.get('PROFITSHIELD_LOCAL_HTTP') == '1'
     init_db()
     print(f"ProfitShield on http://localhost:{PORT}")
     print(f"  AI: {'on, ' + MODEL if KEY else 'off (set OPENROUTER_API_KEY)'}")

@@ -1,6 +1,7 @@
 name: ProfitShield tests
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   workflow_dispatch:
 permissions:
   contents: read
@@ -8,6 +9,22 @@ concurrency:
   group: tests-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
+  development-policy:
+    name: Development branch policy
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PROFITSHIELD_PR_BASE: ${{ github.base_ref }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -p 'test_development_workflow.py' -v
+      - run: python .github/scripts/check_pr_base.py
   backend:
     name: Python ${{ matrix.python }}
     runs-on: ubuntu-latest

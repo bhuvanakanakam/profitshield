@@ -59,7 +59,12 @@ class HTTPFixture(unittest.TestCase):
         cls.network_patch.start()
         cls.square_patch = patch.object(server.SQUARE_OPENER, 'open', side_effect=AssertionError('External Square call'))
         cls.square_patch.start()
+        cls.auth = OwnerAuth(cls.root / 'owner-auth.sqlite3', 'https://profitshield.test')
+        cls.password = 'test-owner-passphrase-only'
+        cls.auth.set_password(cls.password)
+        cls.token, _ = cls.auth.login(cls.password)
         cls.httpd = server.ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
+        cls.httpd.owner_auth = cls.auth
         cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
         cls.thread.start()
 
@@ -79,7 +84,9 @@ class HTTPFixture(unittest.TestCase):
         conn = http.client.HTTPConnection(*self.httpd.server_address, timeout=5)
         try:
             body = json.dumps(payload) if payload is not None else None
-            request_headers = {'Content-Type': 'application/json', 'Origin': server.PUBLIC_ORIGIN}
+            request_headers = {'Content-Type': 'application/json', 'Origin': self.auth.origin}
+            if authenticated:
+                request_headers.update({'Cookie': self.auth.cookie_name+'='+self.token, 'X-CSRF-Token': self.auth.csrf(self.token)})
             request_headers.update(headers or {})
             conn.request(method, path, raw if raw is not None else body, request_headers)
             response = conn.getresponse()
@@ -151,7 +158,7 @@ class PublicAssetTests(HTTPFixture):
         for path in ['/', '/.env', '/backhouse.db?download=1', '/api/health']:
             with self.subTest(path=path):
                 with socket.create_connection(self.httpd.server_address, timeout=5) as conn:
-                    conn.sendall(('HEAD ' + path + ' HTTP/1.0\r\nHost: localhost\r\n\r\n').encode())
+                    conn.sendall(('HEAD ' + path + ' HTTP/1.0\r\nHost: localhost\r\nCookie: '+self.auth.cookie_name+'='+self.token+'\r\n\r\n').encode())
                     chunks = []
                     while True:
                         chunk = conn.recv(65536)

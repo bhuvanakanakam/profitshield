@@ -85,8 +85,8 @@ class InputHTTPTests(HTTPFixture):
 
     def test_ambiguous_content_lengths_rejected(self):
         for length_headers in ['', 'Content-Length: -1\r\n', 'Content-Length: 2\r\nContent-Length: 2\r\n']:
-            raw = ('POST /api/reset HTTP/1.0\r\nHost: localhost\r\nOrigin: '+server.PUBLIC_ORIGIN+
-                   '\r\nContent-Type: application/json\r\n'+length_headers+'\r\n{}').encode()
+            raw = ('POST /api/reset HTTP/1.0\r\nHost: localhost\r\nOrigin: '+self.auth.origin+
+                   '\r\nCookie: '+self.auth.cookie_name+'='+self.token+'\r\nX-CSRF-Token: '+self.auth.csrf(self.token)+'\r\nContent-Type: application/json\r\n'+length_headers+'\r\n{}').encode()
             with socket.create_connection(self.httpd.server_address, timeout=5) as conn:
                 conn.sendall(raw)
                 response = conn.recv(4096)

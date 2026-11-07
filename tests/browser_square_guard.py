@@ -10,6 +10,7 @@ import threading
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import server
+from owner_auth import OwnerAuth
 from square_fakes import FakeSquare
 from playwright.sync_api import sync_playwright
 
@@ -22,6 +23,9 @@ with tempfile.TemporaryDirectory() as tmp, patch.object(server, 'DB_PATH', Path(
     server.init_db()
     httpd = server.ThreadingHTTPServer(('127.0.0.1',0), server.Handler)
     origin = 'http://127.0.0.1:'+str(httpd.server_port)
+    auth = OwnerAuth(Path(tmp)/'browser-auth.sqlite3', origin, local_http=True)
+    auth.set_password('browser-owner-test-password')
+    httpd.owner_auth = auth
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     try:
@@ -33,6 +37,8 @@ with tempfile.TemporaryDirectory() as tmp, patch.object(server, 'DB_PATH', Path(
             page.on('pageerror',lambda error:errors.append(str(error)))
             page.route('**/*',lambda r:r.continue_() if r.request.url.startswith(origin) else r.abort())
             page.goto(origin)
+            page.locator('#password').fill('browser-owner-test-password')
+            page.locator('button').click()
             page.locator('#dataText').filter(has_text='Live database').wait_for()
             for view in ['overview','leaks','agents','payouts','invoices','margins','sources']:
                 page.locator('nav [data-go="'+view+'"]').click()
