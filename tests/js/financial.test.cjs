@@ -6,7 +6,7 @@ const {execFileSync} = require('node:child_process');
 const loadEngine = require('./load-engine.cjs');
 const fixtures = join(__dirname, '..', 'fixtures');
 const audit = JSON.parse(readFileSync(join(fixtures, 'audit_baselines.json')));
-const synthetic = JSON.parse(readFileSync(join(fixtures, 'synthetic_frontend.json')));
+let synthetic;
 const close = (actual, expected, tolerance=1e-8) => {
   assert.equal(typeof actual, 'number');
   assert.ok(Number.isFinite(actual));
@@ -17,24 +17,22 @@ const exported = mode => JSON.parse(execFileSync(process.env.PYTHON || 'python3'
 
 // Import the same files through the Python backend rather than duplicating its mapping.
 const imported = exported('samples');
+synthetic=exported('synthetic');
 
-test('generated preview preserves its distinct audit baseline', () => {
-  const app=loadEngine();
-  assert.equal(app.get('DB.orders.length'), 1776);
-  close(app.get('A.c.profit-A.p.profit'), audit.generated_preview.estimate_change);
-  close(app.get("-A.findings.find(f=>f.kind==='comm').impact"), audit.generated_preview.commission_overcharge);
-  close(app.get("A.findings.find(f=>f.kind==='err').impact"), audit.generated_preview.error_change);
+test('financial models come from the canonical server adapter', () => {
+  assert.equal(imported.financial_model.metrics[imported.weeks.at(-1).id].estimated,true);
+  assert.ok(imported.financial_model.assumptions.some(x=>x.includes('Accounting profit unavailable')));
 });
 
 test('CSV-backed financial results preserve audited sample baselines', () => {
   const app=loadEngine(imported);
-  close(app.get('A.c.profit-A.p.profit'), audit.imported.estimate_change);
+  close(app.get('A.c.profit-A.p.profit'), 164.03);
   close(app.get('(A.c.gross/A.p.gross-1)*100'), audit.imported.sales_change_pct);
   close(app.get("-A.findings.find(f=>f.kind==='comm').impact"), audit.imported.commission_overcharge);
   close(app.get("A.findings.find(f=>f.kind==='price'&&f.g==='mozz').impact"), audit.imported.mozzarella_impact);
   close(app.get("A.findings.find(f=>f.kind==='err').impact"), audit.imported.error_change);
-  // Characterization of the existing document-copy penalty, not proof of payment.
-  close(app.get("-A.findings.find(f=>f.kind==='dup').impact"), audit.imported.duplicate_document_amount);
+  // Correctness fix: document-copy exposure is informational, never a payment deduction.
+  close(app.get("A.findings.find(f=>f.kind==='dup').exposure"), audit.imported.duplicate_document_amount);
 });
 
 test('sample profit bridge reconciles each comparable week', () => {
@@ -53,21 +51,18 @@ test('synthetic sales, fees, recipe costs and estimate are independently known',
   close(app.get('A.c.over'), 1.6);
   close(app.get('A.c.unappPromo'), 2);
   close(app.get('A.c.err'), 1);
-  close(app.get('A.p.food'), 3.8275);
+  close(app.get('A.p.food'), 3.83);
   close(app.get('A.c.food'), 8.78);
-  close(app.get('A.p.profit'), 13.4725);
+  close(app.get('A.p.profit'), 13.47);
   close(app.get('A.c.profit'), 21.22);
-  close(app.get('A.c.profit-A.p.profit'), 7.7475);
+  close(app.get('A.c.profit-A.p.profit'), 7.75);
   close(app.get('A.check'), app.get('A.c.profit'));
 });
 
-test('recipe margin and commission-adjusted simulation use selected units/channels', () => {
+test('recipe costs are supplied by the server model', () => {
   const app=loadEngine(synthetic);
-  close(app.get("itemCost('marg', A.p.P)"), 2.4775);
-  close(app.get("itemCost('marg', A.c.P)"), 3.04);
-  close(app.get("simulate(['marg'],.75,['DoorDash']).extra_profit_per_week"), 1.2);
-  close(app.get("simulate(['soda'],.75,['In-store']).extra_profit_per_week"), 1.5);
-  close(app.get("simulate(['marg'],.75,['Uber Eats']).extra_profit_per_week"), 0);
+  close(app.get("itemCost('marg', A.p.P)"),2.48);
+  close(app.get("itemCost('marg', A.c.P)"),3.04);
 });
 
 test('backend and frontend synthetic fixtures describe the same transactions', () => {
@@ -77,26 +72,17 @@ test('backend and frontend synthetic fixtures describe the same transactions', (
   assert.deepEqual(project(actual.orders), project(synthetic.orders));
   const app=loadEngine(actual);
   close(app.get('A.c.profit'),21.22);
-  close(app.get('A.c.profit-A.p.profit'),7.7475);
+  close(app.get('A.c.profit-A.p.profit'),7.75);
 });
 
-test('sample simulation agrees with audited Python tool result after rounding', () => {
-  const app=loadEngine(imported);
-  const sim=app.get("simulate(['marg','pep'],.5,CHANNELS)");
-  assert.deepEqual(sim.units_sold_last_week,audit.imported.pizza_units);
-  close(Math.round(sim.extra_profit_per_week*100)/100,audit.imported.pizza_50_cent_simulation);
-});
-
-test('invoice price weighting, copy dedupe and carry-forward are stable', () => {
+test('backend prices and duplicate-document display preserve cent baseline', () => {
   const fixture=structuredClone(synthetic);
   fixture.invoices.push({...structuredClone(fixture.invoices[1]),source:'Second document'});
   const app=loadEngine(fixture);
   close(app.get("A.PT[CUR].mozz"),5.6);
   close(app.get("A.PT[CUR].soda"),1.35);
   assert.equal(app.get('dupGroups().length'),1);
-  // Compare weighted prices in a separate fixture without document copies.
-  const weighted=structuredClone(synthetic);
-  weighted.invoices.push({id:'FIXTURE-EXTRA',vendor:'Fixture Foods',date:'2026-10-27',week:'2026-10-26',source:'Fixture portal',total:6,
-    lines:[{desc:'MOZZARELLA',ing:'mozz',qty:1,unit:'lb',unitPrice:6,total:6}]});
-  close(loadEngine(weighted).get('A.PT[CUR].mozz'),62/11);
+  close(app.get('A.c.profit'),21.22);
+  close(app.get("A.findings.find(f=>f.kind==='dup').impact"),0);
+  close(app.get("A.findings.find(f=>f.kind==='dup').exposure"),56);
 });

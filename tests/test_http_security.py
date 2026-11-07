@@ -12,6 +12,20 @@ import unittest
 from unittest.mock import patch
 
 import server
+from input_security import RequestLimiter
+
+
+def valid_payload(route):
+    return {
+        '/api/import': {'text': 'Order,Date,Time,Gross Sales,Itemization\nx,2026-10-26,12:00,10,1x Margherita pizza', 'filename': 'square.csv'},
+        '/api/invoices': {'date': '2026-10-26', 'lines': [{'description': 'Supplies', 'qty': 1, 'unit': 'ea', 'unit_price': 2}]},
+        '/api/menu/preview': {'week': '2026-10-26', 'changes': [{'sku': 'soda', 'old_price': 4.5, 'price': 5}], 'channels': ['In-store']},
+        '/api/menu/apply': {'plan_id': 'P'*43, 'confirmation': 'APPLY SANDBOX PRICES', 'week': '2026-10-26'},
+        '/api/square/seed': {'plan_id': 'P'*43, 'confirmation': 'CREATE 3 SANDBOX ORDERS'},
+        '/api/ask': {'question': 'Why?', 'facts': {}, 'week': '2026-10-26', 'prev_week': '2026-10-19'},
+        '/api/extract': {'image': 'data:image/jpeg;base64,/9j/dGVzdA=='},
+    }.get(route, {})
+
 
 
 class HTTPFixture(unittest.TestCase):
@@ -36,6 +50,8 @@ class HTTPFixture(unittest.TestCase):
             target.write_bytes(cls.marker)
         cls.root_patch = patch.object(server, 'ROOT', cls.root)
         cls.root_patch.start()
+        cls.limiter_patch = patch.object(server, "REQUEST_LIMITER", RequestLimiter(10000, 20000, 10000))
+        cls.limiter_patch.start()
         cls.db_patch = patch.object(server, 'DB_PATH', cls.root / 'test.db')
         cls.db_patch.start()
         cls.network_patch = patch.object(
@@ -55,16 +71,17 @@ class HTTPFixture(unittest.TestCase):
         cls.network_patch.stop()
         cls.square_patch.stop()
         cls.db_patch.stop()
+        cls.limiter_patch.stop()
         cls.root_patch.stop()
         cls.temp.cleanup()
 
-    def request(self, method, path, payload=None, headers=None):
+    def request(self, method, path, payload=None, headers=None, raw=None):
         conn = http.client.HTTPConnection(*self.httpd.server_address, timeout=5)
         try:
             body = json.dumps(payload) if payload is not None else None
             request_headers = {'Content-Type': 'application/json', 'Origin': server.PUBLIC_ORIGIN}
             request_headers.update(headers or {})
-            conn.request(method, path, body, request_headers)
+            conn.request(method, path, raw if raw is not None else body, request_headers)
             response = conn.getresponse()
             return response.status, dict(response.getheaders()), response.read()
         finally:
@@ -78,7 +95,8 @@ class PublicAssetTests(HTTPFixture):
                 status, headers, body = self.request('GET', path)
                 self.assertEqual(status, 200)
                 self.assertEqual(headers['Content-Type'], 'text/html; charset=utf-8')
-                self.assertIn(self.dashboard.encode('utf-8'), body)
+                self.assertIn(self.dashboard.split('<script>')[0].encode('utf-8'), body)
+                self.assertIn(b'<script nonce=', body)
                 self.assertIn(b'<meta name="viewport"', body)
                 self.assertEqual(int(headers['Content-Length']), len(body))
                 head_status, head_headers, head_body = self.request('HEAD', path)
@@ -182,13 +200,13 @@ class PublicAssetTests(HTTPFixture):
             for route, function in routes.items():
                 with self.subTest(route=route), patch.object(
                         server, function, return_value={'ok': True}) as mock:
-                    status, _, body = self.request('POST', route, {})
+                    status, _, body = self.request('POST', route, valid_payload(route))
                     self.assertEqual(status, 200)
                     self.assertEqual(json.loads(body), {'ok': True})
                     mock.assert_called_once()
         with patch.object(server, 'KEY', ''), patch.object(server, 'SQUARE_TOKEN', ''):
             for path in ['/api/ask', '/api/extract', '/api/square/sync']:
-                self.assertEqual(self.request('POST', path, {})[0], 400)
+                self.assertEqual(self.request('POST', path, valid_payload(path))[0], 400)
 
 
 if __name__ == '__main__':

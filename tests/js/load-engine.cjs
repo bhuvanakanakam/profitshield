@@ -23,6 +23,6 @@ module.exports = function loadEngine(fixture) {
   const run = code => vm.runInContext(code, context, {timeout: 2000});
   new vm.Script(source); // Parse all production JavaScript, including rendering.
   run(engine + '\n' + simulation + '\n' + itemCost);
-  if (fixture) run(`WEEKS=${JSON.stringify(fixture.weeks)};DB=${JSON.stringify({orders:fixture.orders,errors:fixture.errors,invoices:fixture.invoices})};CUR=WEEKS.at(-1).id;A=analyze();`);
+  if (fixture) run(`SERVER_MODEL=${JSON.stringify(fixture.financial_model)};WEEKS=${JSON.stringify(fixture.weeks)};DB=${JSON.stringify({orders:fixture.orders,errors:fixture.errors,invoices:fixture.invoices})};CUR=WEEKS.at(-1).id;A=analyze();`);
   return {get: expression => JSON.parse(JSON.stringify(run(expression))), run};
 };

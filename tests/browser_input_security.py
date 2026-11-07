@@ -58,7 +58,7 @@ with tempfile.TemporaryDirectory() as tmp, patch.object(server, 'DB_PATH', Path(
                 assert page.locator(selector+' img').count() == 0
                 assert page.locator(selector+' [onerror], '+selector+' [onfocus], '+selector+' [autofocus]').count() == 0
                 assert not page.evaluate('window.__xss')
-            for view in ['overview','leaks','payouts','invoices','margins','sources']:
+            for view in ['demo','overview','leaks','agents','payouts','invoices','margins','sources']:
                 page.locator('nav [data-go="'+view+'"]').click()
                 page.locator('#v-'+view).wait_for(state='visible')
             page.evaluate("go('payouts')")
@@ -94,7 +94,7 @@ with tempfile.TemporaryDirectory() as tmp, patch.object(server, 'DB_PATH', Path(
                 status = page.evaluate("async()=>{const r=await apiFetch('/api/ask',{method:'POST',body:JSON.stringify({question:'Why?',facts:facts(),history:[],week:CUR,prev_week:prevOf(CUR)})});return r.status}")
                 assert status == 200
             print('Current browser facts pass the Ask API schema with AI mocked: PASS')
-            print('All six views, mobile dashboard and nonce CSP: PASS; no JavaScript errors')
+            print('All eight views, mobile dashboard and nonce CSP: PASS; no JavaScript errors')
             page.route('**/api/data', lambda r: r.fulfill(status=503, body='{"error":"unavailable"}', content_type='application/json'))
             page.reload()
             page.locator('main').filter(has_text='Unable to load your live database').wait_for()

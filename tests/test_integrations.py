@@ -49,7 +49,7 @@ class MockedIntegrationTests(BackendCase):
             tool = json.loads(body['messages'][-1]['content'])
             self.assertEqual(tool['total_overcharge'], 1.6)
             return response({'choices': [{'message': {'content': 'Fixture overcharge is $1.60 [F1].'}}]})
-        with patch.object(server.urllib.request, 'urlopen', side_effect=model):
+        with patch.object(server, 'EXTERNAL_AI_APPROVED', True), patch.object(server.urllib.request, 'urlopen', side_effect=model):
             result = server.ask({'question': 'Check fixture commission', 'week': '2026-10-26', 'prev_week': '2026-10-19',
                                  'facts': {'findings': [{'id': 'F1', 'kind': 'comm'}]}, 'history': []})
         self.assertEqual((result['tools'], result['cites']), (['check_commissions'], ['F1']))

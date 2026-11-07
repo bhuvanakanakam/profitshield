@@ -18,6 +18,8 @@ import io
 import copy
 import hashlib
 import math
+import secrets
+import socket
 import json
 import os
 import re
@@ -31,7 +33,14 @@ from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from zoneinfo import ZoneInfo
+import prototype
+import legacy_finance
+from financial_engine import price_increment, commission_overcharge, cents as financial_cents
 from square_actions import ActionError, PlanStore, fingerprint
+
+from input_security import (BODY_LIMIT, ROW_LIMIT, CHANNELS, UNITS, POST_ROUTES, EXPENSIVE_ROUTES,
+                            RequestLimiter, validate_origin, validate_payload, bounded_json, number,
+                            text as checked_text, invoice_line, validate_tool_args, iso_date)
 
 ROOT = Path(__file__).resolve().parent
 
@@ -51,6 +60,7 @@ _load_env(ROOT / ".env")
 SAMPLES = ROOT / "samples"
 DB_PATH = Path(os.environ.get("BACKHOUSE_DB", ROOT / "backhouse.db"))
 KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
+EXTERNAL_AI_APPROVED = os.environ.get("PROFITSHIELD_AI_PRIVACY_APPROVED", "").lower() == "true"
 MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash")
 VISION_MODEL = os.environ.get("OPENROUTER_VISION_MODEL", MODEL)
 SQUARE_TOKEN = os.environ.get("SQUARE_ACCESS_TOKEN", "").strip()
@@ -62,7 +72,8 @@ PORT = int(os.environ.get("PORT", "8000"))
 LOCK = threading.Lock()
 MUTATION_LOCK = threading.Lock()
 ACTION_CONTEXT = threading.local()
-PUBLIC_ORIGIN = os.environ.get("PROFITSHIELD_ORIGIN", f"http://localhost:{PORT}")
+PUBLIC_ORIGIN = validate_origin(os.environ.get("PROFITSHIELD_ORIGIN", f"http://localhost:{PORT}"))
+REQUEST_LIMITER = RequestLimiter()
 
 # Store catalog. Mirrors MENU / ING in index.html (names are what exports print).
 MENU = {
@@ -168,6 +179,7 @@ def init_db():
             except sqlite3.OperationalError:
                 pass
         con.execute("CREATE TABLE IF NOT EXISTS menu_prices(sku TEXT PRIMARY KEY, price REAL, updated TEXT, pushed TEXT)")
+        prototype.initialize(con)
         empty = con.execute("SELECT COUNT(*) FROM orders").fetchone()[0] == 0
     if empty:
         seed()
@@ -546,8 +558,10 @@ def app_data():
         inv["total"] = round(inv["total"] + l["total"], 2)
     invoices = sorted(invs.values(), key=lambda i: (i["date"], i["source"] != "Supplier portal export" and
                                                     i["source"] != "Emailed PDF"))
-    return {"menu_prices": menu_prices, "weeks": weeks, "orders": out_orders, "errors": out_errors, "invoices": invoices, "imports": imports,
+    result = {"menu_prices": menu_prices, "weeks": weeks, "orders": out_orders, "errors": out_errors, "invoices": invoices, "imports": imports,
             "square": {"configured": bool(SQUARE_TOKEN), "env": "sandbox"}}
+    result["financial_model"] = legacy_finance.model(result)
+    return result
 
 
 # ---------------------------------------------------------------- Square POS (real API)
@@ -846,6 +860,8 @@ Never invent lines you cannot read."""
 
 
 def call_openrouter(model, messages, json_mode=False, temperature=0.2):
+    if not EXTERNAL_AI_APPROVED:
+        raise ValueError("External AI disabled until an owner-approved privacy policy permits transmission")
     body = {"model": model, "messages": messages, "temperature": temperature}
     if json_mode:
         body["response_format"] = {"type": "json_object"}
@@ -890,8 +906,12 @@ def _fid(facts, kind):
 
 
 def tool_profit_bridge(ctx, **_):
-    f = ctx["facts"]
-    return {"summary": f.get("summary"), "bridge": f.get("profit_bridge"), "_chart": "bridge"}
+    data = app_data()['financial_model']
+    current = data['metrics'].get(ctx['week'])
+    previous = data['metrics'].get(ctx.get('prev_week'))
+    return {'summary': current['baseline'] if current else None,
+            'previous': previous['baseline'] if previous else None,
+            'assumptions': data['assumptions'], '_chart': 'bridge'}
 
 
 def tool_check_commissions(ctx, channel=None, **_):
@@ -902,12 +922,15 @@ def tool_check_commissions(ctx, channel=None, **_):
                              "AND channel != 'In-store'", (a, b)):
             if channel and r["channel"] != channel:
                 continue
-            c = CONTRACT.get(r["channel"], 0)
-            if r["subtotal"] and r["commission"] / r["subtotal"] > c + .002:
-                out.append({"channel": r["channel"], "order": r["order_id"], "date": r["date"],
-                            "charged_rate": round(r["commission"] / r["subtotal"], 3), "contract_rate": c,
-                            "overcharge": round(r["commission"] - r["subtotal"] * c, 2)})
-    return {"overcharged_orders": len(out), "total_overcharge": round(sum(x["overcharge"] for x in out), 2),
+            c = CONTRACT.get(r['channel'], 0)
+            excess = commission_overcharge({'gross_sales': financial_cents(r['subtotal']),
+                'commissions': financial_cents(r['commission']), 'contract_rate': str(c),
+                'contract_basis': 'gross_sales'})
+            if excess:
+                out.append({'channel': r['channel'], 'order': r['order_id'], 'date': r['date'],
+                            'charged_rate': round(r['commission'] / r['subtotal'], 3), 'contract_rate': c,
+                            'overcharge': excess / 100})
+    return {"overcharged_orders": len(out), "total_overcharge": sum(financial_cents(x["overcharge"]) for x in out) / 100,
             "contract_rates": CONTRACT, "examples": out[:5], "finding_id": _fid(ctx["facts"], "comm")}
 
 
@@ -920,7 +943,7 @@ def tool_find_unapproved_promos(ctx, **_):
             k = (r["channel"], r["promo_name"])
             x = agg.setdefault(k, {"channel": k[0], "promotion": k[1], "orders": 0, "cost": 0.0, "approved": k in APPROVED})
             x["orders"] += 1
-            x["cost"] = round(x["cost"] + r["promo_amount"], 2)
+            x["cost"] = (financial_cents(x["cost"]) + financial_cents(r["promo_amount"])) / 100
     return {"promotions": list(agg.values()), "finding_id": _fid(ctx["facts"], "promo")}
 
 
@@ -970,12 +993,14 @@ def tool_error_charge_pattern(ctx, **_):
         by_item[r["item"] or "whole order"] = by_item.get(r["item"] or "whole order", 0) + 1
         d, h = date.fromisoformat(r["date"]), int(r["time"][:2])
         peak += d.weekday() in (4, 5) and 18 <= h <= 20
-    return {"charges": len(rows), "total": round(sum(r["amount"] for r in rows), 2), "by_item": by_item,
+    return {"charges": len(rows), "total": sum(financial_cents(r["amount"]) for r in rows) / 100, "by_item": by_item,
             "fri_sat_6_to_9pm": peak, "finding_id": _fid(ctx["facts"], "err")}
 
 
 def tool_menu_margins(ctx, **_):
-    return {"items": ctx["facts"].get("menu_margins", [])}
+    model = app_data()['financial_model']
+    return {'food_cost_estimates': model['menu_costs'].get(ctx['week'], {}),
+            'assumptions': model['assumptions']}
 
 
 def tool_simulate_price_change(ctx, items=None, increase=0.5, channels=None, **_):
@@ -996,11 +1021,12 @@ def tool_simulate_price_change(ctx, items=None, increase=0.5, channels=None, **_
                 if it.get("sku") in wanted:
                     units[r["channel"]] = units.get(r["channel"], 0) + it["qty"]
     inc = float(increase)
-    per = {ch: round(u * inc * (1 - CONTRACT.get(ch, 0)), 2) for ch, u in units.items()}
+    per_cents = price_increment(units, increase, CONTRACT)
+    per = {ch: amount / 100 for ch, amount in per_cents.items()}
     leak = -sum(f.get("weekly_impact", 0) for f in ctx["facts"].get("findings", []) if f.get("kind") == "price")
     return {"items": [names[k] for k in wanted], "increase_per_item": inc, "channels": chans,
             "units_sold_last_week": units, "extra_profit_per_week_by_channel": per,
-            "extra_profit_per_week": round(sum(per.values()), 2), "price_increase_leak_per_week": round(leak, 2),
+            "extra_profit_per_week": sum(per_cents.values()) / 100, "price_increase_leak_per_week": round(leak, 2),
             "assumes": "same order volume as last week (no demand drop)", "_chart": "sim"}
 
 
@@ -1011,7 +1037,7 @@ TOOLS = {
     "find_unapproved_promos": (tool_find_unapproved_promos, "List restaurant-funded promotions this week and whether each was approved.", {}),
     "find_price_changes": (tool_find_price_changes, "Compare ingredient prices on supplier invoices this week vs last week.",
                            {"min_pct": {"type": "number", "description": "minimum % change to report, default 5"}}),
-    "find_duplicate_invoices": (tool_find_duplicate_invoices, "Find supplier invoices recorded or paid more than once.", {}),
+    "find_duplicate_invoices": (tool_find_duplicate_invoices, "Find duplicate invoice documents; documents do not prove duplicate payment.", {}),
     "error_charge_pattern": (tool_error_charge_pattern, "Summarize missing/incorrect item charges this week by item and time.", {}),
     "menu_margins": (tool_menu_margins, "Food cost and margin per menu item, last week vs this week.", {}),
     "simulate_price_change": (tool_simulate_price_change, "Estimate extra weekly profit from raising prices on some items.",
@@ -1031,8 +1057,19 @@ For "what if" questions use simulate_price_change and state its assumption."""
 
 def ask(p):
     validate_payload('/api/ask', p, MENU, INGREDIENTS)
+    if not EXTERNAL_AI_APPROVED:
+        raise ValueError('External AI disabled until privacy approval; use the deterministic Guru')
     facts = p.get("facts", {})
     ctx = {"facts": facts, "week": p.get("week") or facts.get("week_start"), "prev_week": p.get("prev_week")}
+    # Numerical facts come from SQLite and the canonical engine, never browser assertions.
+    source_model = app_data()['financial_model']
+    current = source_model['metrics'].get(ctx['week'])
+    previous = source_model['metrics'].get(ctx['prev_week'])
+    facts = {**facts, 'summary': current['baseline'] if current else None,
+             'profit_bridge': {'current': current['baseline'] if current else None,
+                               'previous': previous['baseline'] if previous else None},
+             'findings': [{'id': f.get('id'), 'kind': f.get('kind')} for f in facts.get('findings', [])]}
+    ctx['facts'] = facts
     msgs = [{"role": "system", "content": AGENT_SYSTEM},
             {"role": "user", "content": "FACTS (findings and labels):\n" + json.dumps(
                 {k: facts.get(k) for k in ("store", "this_week", "last_week", "summary", "findings")})}]
@@ -1125,6 +1162,29 @@ PUBLIC_ASSETS = {"/": "index.html", "/index.html": "index.html"}
 
 
 class Handler(BaseHTTPRequestHandler):
+    def setup(self):
+        super().setup()
+        self.connection.settimeout(10)
+        self.csp_nonce = secrets.token_urlsafe(24)
+
+    def end_headers(self):
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "same-origin")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'nonce-" + self.csp_nonce +
+                         "'; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                         "font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; "
+                         "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+        if PUBLIC_ORIGIN.startswith('https://'):
+            self.send_header("Strict-Transport-Security", "max-age=31536000")
+        super().end_headers()
+
+    def _limited(self, costly=False):
+        if not REQUEST_LIMITER.allow(self.client_address[0], costly=costly):
+            self._json(429, {"error": "Request limit reached; retry later"})
+            return True
+        return False
 
     def _json(self, code, obj):
         body = json.dumps(obj, allow_nan=False).encode()
@@ -1142,12 +1202,17 @@ class Handler(BaseHTTPRequestHandler):
         self.do_GET()
 
     def do_GET(self):
+        if self._limited():
+            return
         # Match canonical URL paths only. Do not decode or normalize untrusted
         # paths into filesystem names (including encoded traversal/separators).
         path = self.path.split("?", 1)[0].split("#", 1)[0]
         if path == "/api/health":
-            return self._json(200, {"ok": True, "ai": bool(KEY), "model": MODEL, "backend": True,
+            return self._json(200, {"ok": True, "ai": bool(KEY and EXTERNAL_AI_APPROVED), "model": MODEL, "backend": True,
                                     "square": bool(SQUARE_TOKEN)})
+        if path == "/api/prototype":
+            with LOCK, db() as con:
+                return self._json(200, prototype.output(con))
         if path == "/api/data":
             return self._json(200, app_data())
         asset = PUBLIC_ASSETS.get(path)
@@ -1156,7 +1221,7 @@ class Handler(BaseHTTPRequestHandler):
             # Fail closed if an allowlisted file is replaced with a symlink.
             if target.is_symlink() or not target.is_file():
                 return self._json(404, {"error": "not found"})
-            page = target.read_text(encoding="utf-8")
+            page = target.read_text(encoding="utf-8").replace('<script>', '<script nonce="' + self.csp_nonce + '">')
             body = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
                     "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">"
                     "</head><body>" + page + "</body></html>").encode("utf-8")
@@ -1171,21 +1236,52 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(404, {"error": "not found"})
 
     def do_POST(self):
-        guarded = self.path in ('/api/menu/preview', '/api/menu/apply', '/api/square/seed/preview', '/api/square/seed')
+        if self._limited(costly=self.path in EXPENSIVE_ROUTES):
+            return
+        if self.path not in POST_ROUTES:
+            return self._json(404, {"error": "unknown route"})
+        if self.headers.get("Origin") != PUBLIC_ORIGIN or self.headers.get("Sec-Fetch-Site") == "cross-site":
+            return self._json(403, {"error": "Invalid request origin"})
+        if self.headers.get("Content-Type", "").split(';', 1)[0].strip().lower() != "application/json":
+            return self._json(415, {"error": "Use application/json"})
         try:
-            if guarded:
-                if self.headers.get('Origin') != PUBLIC_ORIGIN:
-                    return self._json(403, {'error': 'Invalid request origin'})
-                if self.headers.get('Content-Type', '').split(';', 1)[0].strip().lower() != 'application/json':
-                    return self._json(415, {'error': 'Use application/json'})
-                if self.headers.get('Transfer-Encoding') or len(self.headers.get_all('Content-Length', [])) != 1:
-                    raise ActionError('A single Content-Length is required', 400)
-            n = int(self.headers.get("Content-Length", 0))
-            if guarded and not 0 <= n <= 32768:
-                return self._json(413, {'error': 'Review request exceeds 32 KiB'})
-            p = json.loads(self.rfile.read(n) or b"{}")
-            if guarded and not isinstance(p, dict):
-                raise ActionError('JSON object required', 400)
+            if self.headers.get('Transfer-Encoding') or self.headers.get('Content-Encoding'):
+                return self._json(413, {"error": "Unsupported body encoding"})
+            lengths = self.headers.get_all('Content-Length', [])
+            if len(lengths) != 1 or not re.fullmatch(r'[0-9]{1,10}', lengths[0]):
+                raise ValueError("A single nonnegative Content-Length is required")
+            n = int(lengths[0])
+            review_route = self.path in ('/api/menu/preview', '/api/menu/apply', '/api/square/seed/preview', '/api/square/seed')
+            if n > (32768 if review_route else BODY_LIMIT):
+                return self._json(413, {"error": "Body exceeds 16 MiB or uses unsupported encoding"})
+            raw = self.rfile.read(n)
+            if len(raw) != n:
+                raise ValueError("Incomplete request body")
+            def reject_constant(_):
+                raise ValueError("JSON numbers must be finite")
+            def distinct_fields(pairs):
+                result = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise ValueError("Duplicate JSON field")
+                    result[key] = value
+                return result
+            p = json.loads(raw or b"{}", parse_constant=reject_constant, object_pairs_hook=distinct_fields)
+            if self.path == '/api/simulate':
+                bounded_json(p)
+                if not isinstance(p, dict) or set(p) - {'week', 'items', 'increase', 'channels'}:
+                    raise ValueError('Invalid simulation request')
+                iso_date(p.get('week'))
+                arguments = {k: v for k, v in p.items() if k != 'week'}
+                validate_tool_args('simulate_price_change', arguments, MENU)
+                context = {'week': p['week'], 'facts': {}}
+                return self._json(200, tool_simulate_price_change(context, **arguments))
+            if self.path.startswith('/api/prototype/'):
+                bounded_json(p)
+                with LOCK, db() as con:
+                    result = prototype.operate(con, self.path.rsplit('/', 1)[-1], p, KNOWN_FORMATS, parse_date)
+                return self._json(200, result)
+            validate_payload(self.path, p, MENU, INGREDIENTS)
             if self.path == '/api/menu/preview':
                 return self._json(200, preview_menu(p))
             if self.path == '/api/square/seed/preview':
@@ -1209,11 +1305,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(400, {"error": "OPENROUTER_API_KEY is not set"})
                 return self._json(200, ask(p) if self.path == "/api/ask" else extract(p))
             return self._json(404, {"error": "unknown route"})
-        except ActionError as e:
-            return self._json(e.status, {'error': str(e)})
-        except Exception as e:
-            print(f"  ERROR {self.path}: {e}")
-            return self._json(400 if isinstance(e, ValueError) else 500, {"error": str(e)})
+        except ActionError as error:
+            return self._json(error.status, {'error': str(error)})
+        except (ValueError, TypeError, csv.Error, RecursionError, OverflowError):
+            return self._json(400, {"error": "Invalid request data; check fields, dates and numeric ranges"})
+        except (TimeoutError, socket.timeout):
+            return self._json(408, {"error": "Request body timed out"})
+        except Exception:
+            print(f"  ERROR {self.path}: request failed")
+            return self._json(500, {"error": "Request failed"})
 
     def log_message(self, fmt, *args):
         if args and "/api/" in str(args[0]) and "data" not in str(args[0]):
@@ -1225,4 +1325,4 @@ if __name__ == "__main__":
     print(f"ProfitShield on http://localhost:{PORT}")
     print(f"  AI: {'on, ' + MODEL if KEY else 'off (set OPENROUTER_API_KEY)'}")
     print(f"  Square: {'on, ' + SQUARE_BASE if SQUARE_TOKEN else 'off (set SQUARE_ACCESS_TOKEN for live POS sync)'}")
-    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

@@ -343,6 +343,7 @@ pre.draft{white-space:pre-wrap;font-family:var(--mono);font-size:12px;line-heigh
     <div class="store"><span class="avatar">FA</span><span class="store-t"><span id="storeName">Forbes Ave Slice Co.</span><small>Pittsburgh · 4 channels</small></span></div>
     <nav class="nav navwrap" aria-label="Sections">
       <div class="navgroup">
+        <button data-go="demo"><svg class="i"><use href="#i-spark"/></svg>Connected demo</button>
         <button data-go="overview"><svg class="i"><use href="#i-home"/></svg>Home</button>
         <button data-go="leaks"><svg class="i"><use href="#i-leak"/></svg>Money leaks<span class="count" id="navCount"></span></button>
         <button data-go="ask"><svg class="i"><use href="#i-spark"/></svg>Ask ProfitShield</button>
@@ -375,7 +376,57 @@ pre.draft{white-space:pre-wrap;font-family:var(--mono);font-size:12px;line-heigh
     </header>
 
     <!-- HOME -->
-    <section class="view" id="v-overview">
+
+<section class="view" id="v-demo" aria-labelledby="demoHeading">
+  <h2 id="demoHeading">One financial baseline. Six connected workflows.</h2>
+  <p>Local synthetic demonstration. Financial amounts come from the Python cent-based engine. Execution is simulated; disputes are drafts. Legacy sample explorer views remain available in the sidebar and are estimates, not accounting profit.</p>
+  <div class="row" style="flex-wrap:wrap;gap:12px">
+    <button class="btn" id="demoLoad">Load synthetic golden restaurant</button>
+    <button class="btn ghost" id="demoReset">Reset connected demo</button>
+    <button class="btn ghost" id="demoRefresh">Refresh persisted data</button>
+  </div>
+  <p id="demoStatus" role="status" aria-live="polite"></p>
+  <p id="demoError" role="alert" style="color:var(--neg)"></p>
+  <div id="demoBaseline"></div>
+  <div class="card pad" style="margin-top:16px;padding:16px">
+    <h3>1 · Ingestion and normalization</h3>
+    <p>Use the normalized financial CSV template <code>demo_data/golden.csv</code> in the repository. Amounts are dollars, costs positive, credits negative. Gross must not already include refunds or promotions. Unknown costs stay blank. Known DoorDash, Uber Eats, Grubhub, Square and supplier CSV formats can also be imported here. Their missing costs remain unavailable until reviewed; they cannot establish complete contribution margin by themselves. Receipt extraction and owner-reviewed invoice saves remain under Sources.</p>
+    <label for="demoFile">Import synthetic financial or known platform/supplier CSV</label>
+    <input id="demoFile" type="file" accept=".csv,text/csv">
+    <div id="demoImportReport"></div>
+  </div>
+  <div class="card pad" style="margin-top:16px;padding:16px">
+    <h3>2 · Diagnostic Guru</h3>
+    <p>Deterministic fallback — no external LLM call. Select an Auditor finding to explain its exact evidence.</p>
+    <form id="demoGuruForm"><label for="demoQuestion">Question</label><input id="demoQuestion" maxlength="2000" value="Am I being overcharged?" required style="width:100%"><button class="btn" type="submit">Ask Guru</button></form>
+    <div id="demoGuru" aria-live="polite"></div>
+  </div>
+  <div class="card pad" style="margin-top:16px;padding:16px">
+    <h3>3 · Proactive Auditor</h3><p id="demoBriefing"></p><div id="demoFindings"></div>
+  </div>
+  <div class="card pad" style="margin-top:16px;padding:16px">
+    <h3>4 · Predictive Simulation</h3>
+    <p>Compare scenarios against the same baseline. Demand and quantities stay unchanged; these are conditional calculations, not forecasts.</p>
+    <form id="demoSimForm">
+      <label for="demoScenarioName">Scenario name</label><input id="demoScenarioName" value="Delivery menu review" maxlength="100" required>
+      <label for="demoPrice">Menu price change (%)</label><input id="demoPrice" type="number" value="5" min="-100" max="100" step="0.01" required>
+      <label for="demoFood">Ingredient cost change (%)</label><input id="demoFood" type="number" value="0" min="-100" max="100" step="0.01" required>
+      <label for="demoCommission">Commission change (percentage points)</label><input id="demoCommission" type="number" value="0" min="-100" max="100" step="0.01" required>
+      <button class="btn" type="submit">Calculate scenario</button>
+    </form><div id="demoScenarios"></div>
+  </div>
+  <div class="card pad" style="margin-top:16px;padding:16px">
+    <h3>5 · Approval and simulated execution</h3>
+    <p>Propose a scenario, review it, then type the exact approval phrase. No Square or other external API is called. Simulated actions never become “Verified”.</p>
+    <div id="demoActions"></div>
+  </div>
+  <div class="card pad" style="margin-top:16px;padding:16px">
+    <h3>6 · Dispute drafts</h3><p>Select “Prepare draft” beside an Auditor finding. Claims remain conditional on contract and approval evidence. Duplicate documents produce an inquiry with no payment claim.</p>
+    <div id="demoDispute"></div>
+  </div>
+</section>
+
+    <section class="view" id="v-overview"><p class="callout">Historical sample estimates: refunds and other variable costs unreported; food cost estimated from recipes. Accounting profit unavailable. Use Connected demo for fully specified, reconciled financial records.</p>
       <div class="banner">
         <div><h2 id="bannerTitle"></h2><p id="bannerSub"></p><div class="row" style="margin-top:12px"><button class="btn primary" id="openTop">Review leaks</button><button class="btn ghost" id="askWhy"><svg class="i" style="color:var(--brand)"><use href="#i-spark"/></svg>Explain this week</button></div></div>
         <div class="progress"><div class="lbl"><span>Recovered</span><b id="recLbl">$0 of $0</b></div><div class="track"><i id="recBar" style="width:0"></i></div><span class="note" id="recNote"></span></div>
@@ -605,7 +656,8 @@ function genData(){
 }
 
 /* ============ engine ============ */
-let DB=genData();
+let DB={orders:[],errors:[],invoices:[]};
+let SERVER_MODEL=null;
 let CUR='W4';
 const BACKEND={on:false,square:false,imports:[]};
 const prevOf=w=>WEEKS[Math.max(0,WEEKS.findIndex(x=>x.id===w)-1)].id;
@@ -613,28 +665,8 @@ const weekOf=w=>WEEKS.find(x=>x.id===w);
 const isApproved=o=>APPROVED_PROMOS.some(p=>p.channel===o.channel&&p.name===o.promo);
 
 function dupGroups(){const g={};DB.invoices.forEach(i=>{const k=i.vendor+'|'+i.id;(g[k]=g[k]||[]).push(i)});return Object.values(g).filter(a=>a.length>1)}
-function priceTable(){
-  const P={};let last={};Object.keys(ING).forEach(g=>last[g]=ING[g].p);
-  WEEKS.forEach(wk=>{const acc={};const seen=new Set();
-    DB.invoices.filter(i=>i.week===wk.id).forEach(i=>{const key=i.vendor+'|'+i.id;if(seen.has(key))return;seen.add(key);i.lines.forEach(l=>{if(!l.ing)return;(acc[l.ing]=acc[l.ing]||{q:0,c:0});acc[l.ing].q+=l.qty;acc[l.ing].c+=l.qty*l.unitPrice})});
-    P[wk.id]={};Object.keys(ING).forEach(g=>{if(acc[g]&&acc[g].q>0)last[g]=acc[g].c/acc[g].q;P[wk.id][g]=last[g]})});
-  return P;
-}
-function metrics(w,PT){
-  const os=DB.orders.filter(o=>o.week===w);
-  const m={w,orders:os.length,gross:0,contractComm:0,over:0,apprPromo:0,unappPromo:0,err:0,dup:0,Q:{},food:0,byCh:{}};
-  CHANNELS.forEach(c=>m.byCh[c]={orders:0,gross:0});
-  os.forEach(o=>{const c=CONTRACT[o.channel];m.gross+=o.subtotal;m.contractComm+=o.subtotal*c;m.over+=o.subtotal*(o.rate-c);
-    if(o.promo){if(isApproved(o))m.apprPromo+=o.promoAmt;else m.unappPromo+=o.promoAmt}
-    m.byCh[o.channel].orders++;m.byCh[o.channel].gross+=o.subtotal;
-    o.items.forEach(it=>{const rec=(MENU[it.sku]||{}).recipe||{};for(const [g,q] of Object.entries(rec))m.Q[g]=(m.Q[g]||0)+q*it.qty})});
-  m.err=DB.errors.filter(e=>e.week===w).reduce((s,e)=>s+e.amount,0);
-  m.errN=DB.errors.filter(e=>e.week===w).length;
-  dupGroups().forEach(g=>g.slice(1).forEach(i=>{if(i.week===w)m.dup+=i.total}));
-  m.P=PT[w];m.food=Object.keys(m.Q).reduce((s,g)=>s+m.Q[g]*m.P[g],0);
-  m.profit=m.gross-m.contractComm-m.over-m.apprPromo-m.unappPromo-m.err-m.food-m.dup;
-  return m;
-}
+function priceTable(){return SERVER_MODEL.price_table}
+function metrics(w,PT){return SERVER_MODEL.metrics[w]}
 
 function analyze(){
   const PT=priceTable();
@@ -674,8 +706,8 @@ function analyze(){
   }
   // duplicates
   dupGroups().forEach(g=>{const extra=g.slice(1).filter(i=>i.week===CUR);if(!extra.length)return;
-    findings.push({kind:'dup',group:g,impact:-extra.reduce((s,i)=>s+i.total,0),title:`${g[0].vendor} invoice ${g[0].id} recorded twice`,
-      sub:`Once from ${g[0].source.toLowerCase()}, again from a ${g[1].source.toLowerCase()}. Same total, same date.`,tags:[['neg','Double payment'],['mute',g[0].vendor]]})});
+    findings.push({kind:'dup',group:g,impact:0,exposure:extra.reduce((s,i)=>s+i.total,0),title:`${g[0].vendor} invoice ${g[0].id} recorded twice`,
+      sub:`Once from ${g[0].source.toLowerCase()}, again from a ${g[1].source.toLowerCase()}. Same total, same date.`,tags:[['warn','Duplicate document'],['mute',g[0].vendor]]})});
   findings.sort((a,b)=>a.impact-b.impact);
   findings.forEach((f,i)=>f.id='F'+(i+1));
 
@@ -688,12 +720,14 @@ function analyze(){
   priceF.forEach(f=>steps.push({label:ING[f.g].name+' price',value:f.impact,fid:f.id}));
   if(Math.abs(otherPrice)>.5)steps.push({label:'Other prices',value:otherPrice});
   const fk=k=>findings.find(f=>f.kind===k);
-  [['comm','Commission',c.over-p.over],['promo','Promotions',c.unappPromo-p.unappPromo],['err','Error charges',c.err-p.err],['dup','Paid twice',c.dup-p.dup]].forEach(([k,l,d])=>{if(Math.abs(d)>.5)steps.push({label:l,value:-d,fid:fk(k)&&fk(k).id})});
+  [['comm','Commission',c.over-p.over],['promo','Promotions',c.unappPromo-p.unappPromo],['err','Error charges',c.err-p.err],['dup','Duplicate documents',0]].forEach(([k,l,d])=>{if(Math.abs(d)>.5)steps.push({label:l,value:-d,fid:fk(k)&&fk(k).id})});
   steps.push({label:'This week',value:c.profit,total:true});
+  const subtotal=steps.slice(1,-1).reduce((s,x)=>s+x.value,p.profit);
+  if(Math.abs(c.profit-subtotal)>0.000001)steps.splice(steps.length-1,0,{label:'Other movements and cent rounding',value:c.profit-subtotal});
   const check=steps.slice(1,-1).reduce((s,x)=>s+x.value,p.profit);
   return{PT,M,c,p,findings,steps,check};
 }
-let A=analyze();
+let A=null;
 
 /* ============ rendering ============ */
 const CH_COLOR={'DoorDash':'#E8412C','Uber Eats':'#1F9D55','Grubhub':'#F28C28','In-store':'#5B6472'};
@@ -722,8 +756,8 @@ function renderOverview(){
   $('#recLbl').textContent=`${money(recovered)} of ${money(leak)}`;$('#recBar').style.width=(leak?Math.min(100,recovered/leak*100):0)+'%';
   const done=findings.filter(f=>statusOf(f)!=='open').length;$('#recNote').textContent=`${done} of ${findings.length} leaks handled`;
   const fees=m=>m.contractComm+m.over+m.apprPromo+m.unappPromo+m.err;
-  const K=[['Net sales',m=>m.gross,'#5B6472',false,v=>money(v)],['Profit',m=>m.profit,'var(--ink)',false,v=>money(v)],['Food cost',m=>m.food/m.gross,'#965F06',true,v=>(v*100).toFixed(1)+'%'],['App fees & charges',m=>fees(m)/m.gross,'#C9372C',true,v=>(v*100).toFixed(1)+'%']];
-  $('#kpis').innerHTML=K.map(([l,f,col,inv,fmt])=>{const v=f(c),pv=f(p);const d=v-pv;const good=inv?d<=0:d>=0;const dTxt=fmt===K[0][4]||l==='Profit'?signed(d):((d>0?'+':'')+(d*100).toFixed(1)+' pts');
+  const K=[['Estimated net sales',m=>m.net,'#5B6472',false,v=>money(v)],['Estimated contribution margin',m=>m.profit,'var(--ink)',false,v=>money(v)],['Food cost',m=>m.food/m.gross,'#965F06',true,v=>(v*100).toFixed(1)+'%'],['App fees & charges',m=>fees(m)/m.gross,'#C9372C',true,v=>(v*100).toFixed(1)+'%']];
+  $('#kpis').innerHTML=K.map(([l,f,col,inv,fmt])=>{const v=f(c),pv=f(p);const d=v-pv;const good=inv?d<=0:d>=0;const dTxt=fmt===K[0][4]||l==='Estimated contribution margin'?signed(d):((d>0?'+':'')+(d*100).toFixed(1)+' pts');
     return`<div class="card kpi"><div class="kpi-top"><small>${l}</small><span class="delta ${good?'pos':'neg'}">${dTxt}</span></div><div class="foot"><div class="v">${fmt(v)}</div>${spark(upto.map(f),col)}</div><span class="note">vs ${fmt(pv)} the week before</span></div>`}).join('');
   renderWaterfall();
   $('#topLeaks').innerHTML=findings.slice(0,5).map(f=>{const st=statusOf(f);const [ic,tone]=ICON[f.kind]||['i-leak','neg'];return`<button class="leak" data-f="${f.id}"><span class="lic ${tone}"><svg class="i"><use href="#${ic}"/></svg></span><span class="lt"><b>${esc(f.title)}</b><span>${st==='open'?esc(f.tags[0][1])+' · '+ACTION_WORD[f.kind]:STAT_PILL[st][0]}</span></span><span class="lv ${st==='resolved'?'done':''}">${st==='resolved'?'✓ ':''}${signed(f.impact)}</span></button>`}).join('')||'<p class="pad note">No leaks this week.</p>';
@@ -747,7 +781,7 @@ function renderLeaks(){
   $('#findings').innerHTML=list.map(f=>{const st=statusOf(f);const [ic,tone]=ICON[f.kind]||['i-leak','neg'];return`<div class="finding" role="button" tabindex="0" data-f="${f.id}"><span class="lic ${tone}"><svg class="i"><use href="#${ic}"/></svg></span><span class="ft"><b>${esc(f.title)}</b><span>${esc(f.sub)}</span><span class="tags">${f.tags.map(([t,l])=>`<span class="pill ${t}">${esc(l)}</span>`).join('')}</span></span><span class="fstat"><span class="pill ${STAT_PILL[st][1]}">${STAT_PILL[st][0]}</span>${st==='open'?`<button class="btn ghost sm" data-act="${f.kind==='price'||f.kind==='err'?'resolved':'disputed'}">${f.kind==='price'||f.kind==='err'?'Mark handled':'Mark disputed'}</button>`:st==='disputed'?`<button class="btn ghost sm" data-act="resolved">Credit received</button>`:`<button class="btn ghost sm" data-act="open">Reopen</button>`}</span><span class="fimp"><span class="num ${st==='resolved'?'pos':''}">${signed(f.impact)}</span><small>${signed(f.impact*52)}/yr</small></span></div>`}).join('')||`<p class="pad note">${LEAKTAB==='open'?'Nothing open. Nice work.':'Nothing here yet.'}</p>`;
   $$('#findings .finding').forEach(el=>{el.onclick=e=>{const a=e.target.closest('[data-act]');const f=A.findings.find(x=>x.id===el.dataset.f);if(a){e.stopPropagation();setStatus(f,a.dataset.act);toast(a.dataset.act==='resolved'?'Marked as recovered':a.dataset.act==='disputed'?'Marked as in dispute':'Reopened');return}openFinding(el.dataset.f)};el.onkeydown=e=>{if(e.key==='Enter')openFinding(el.dataset.f)}});
 }
-function openAssist(){$('#assist').hidden=false;setTimeout(()=>$('#askInput').focus(),50)}
+function openAssist(){if(VIEW==='demo'){document.getElementById('demoQuestion').scrollIntoView({block:'center'});document.getElementById('demoQuestion').focus();return}$('#assist').hidden=false;setTimeout(()=>$('#askInput').focus(),50)}
 function closeAssist(){$('#assist').hidden=true}
 function renderWaterfall(){
   const S=A.steps;const W=760,H=300,L=58,Rr=12,T=26,B=46;
@@ -778,7 +812,7 @@ $('#dClose').onclick=closeDrawer;$('#scrim').onclick=closeDrawer;document.addEve
 function draftFor(f){
   if(f.kind==='comm'){const amt=-f.impact;return`Subject: Commission billed above contract rate, ${weekOf(CUR).label}\n\nStore: Forbes Ave Slice Co., Pittsburgh, PA\nContract commission rate: ${(CONTRACT[f.ch]*100).toFixed(0)}%\nRate charged: ${(f.orders[0].rate*100).toFixed(0)}% on ${f.orders.length} orders\nTotal overcharge: ${money(amt,2)}\n\nAffected orders:\n${f.orders.slice(0,60).map(o=>`${o.id}  ${o.date}  subtotal ${money(o.subtotal,2)}  over ${money(o.subtotal*(o.rate-CONTRACT[f.ch]),2)}`).join('\n')}${f.orders.length>60?`\n…and ${f.orders.length-60} more`:''}\n\nPlease correct the rate and credit the difference.`}
   if(f.kind==='promo')return`Subject: Promotion running without my approval\n\nStore: Forbes Ave Slice Co.\nPromotion: "${f.name}" (merchant-funded)\nOrders affected: ${f.orders.length}, ${f.orders[0].date} to ${f.orders[f.orders.length-1].date}\nCost to my store: ${money(-f.impact,2)}\n\nI did not approve this promotion. Please stop it and credit the merchant-funded amount.`;
-  if(f.kind==='dup'){const g=f.group;return`Subject: Duplicate payment, invoice ${g[0].id}\n\nHi ${g[0].vendor} team,\n\nInvoice ${g[0].id} dated ${g[0].date} for ${money(g[0].total,2)} was paid twice. Please apply a credit of ${money(g[0].total,2)} to our next invoice or refund it.\n\nThanks,\nForbes Ave Slice Co.`}
+  if(f.kind==='dup'){const g=f.group;return`Subject: Duplicate document review, invoice ${g[0].id}\n\nHi ${g[0].vendor} team,\n\nInvoice ${g[0].id} dated ${g[0].date} for ${money(g[0].total,2)} appears in two documents. Please help reconcile the invoice and payment ledger; duplicate payment is not established. No credit amount is claimed without payment evidence.\n\nThanks,\nForbes Ave Slice Co.`}
   if(f.kind==='price')return`Subject: Price change on ${ING[f.g].name.toLowerCase()}\n\nHi ${ING[f.g].vendor} rep,\n\nOur price on ${ING[f.g].desc} went from ${money(A.p.P[f.g],2)} to ${money(A.c.P[f.g],2)} per ${ING[f.g].unit} this week. Can you confirm whether this is a market change and whether a contract price or alternate brand is available? We buy about ${Math.round(A.c.Q[f.g])} ${ING[f.g].unit} a week.\n\nThanks,\nForbes Ave Slice Co.`;
   if(f.kind==='err')return`Packing station note, effective this weekend:\n\n1. Drinks go in the bag first, before food leaves the pass.\n2. Fri and Sat 6 to 9pm: second person checks every bag against the ticket.\n3. Highlight drinks on the receipt stapled to the bag.\n\nWhy: ${f.errs.length} missing-item charges last week, ${f.peak} of them Fri to Sat 6 to 9pm.`;
   return'';
@@ -811,21 +845,21 @@ function openFinding(id){
   if(f.kind==='dup'){
     body+=f.group.map(i=>`<div class="box"><div class="box-h"><span>${esc(i.vendor)} ${esc(i.id)} · ${nice(i.date)}</span><span>${esc(i.source)}</span></div><div class="tbl-wrap"><table><tbody>${i.lines.map(l=>`<tr><td class="mono" style="font-size:12px">${esc(l.desc)}</td><td class="n">${esc(l.qty)} ${esc(l.unit)}</td><td class="n">${money(l.total,2)}</td></tr>`).join('')}<tr><td><b>Total</b></td><td></td><td class="n"><b>${money(i.total,2)}</b></td></tr></tbody></table></div></div>`).join('');
     body+=`<div><div class="eyebrow" style="margin-bottom:8px">Ready to send</div><pre class="draft">${esc(draftFor(f))}</pre></div>`;
-    foot=`<button class="btn" data-copy>Copy credit request</button>`;
+    foot=`<button class="btn" data-copy>Copy reconciliation inquiry</button>`;
   }
   const st=statusOf(f);foot+=st==='open'?`<button class="btn ghost" id="stBtn" data-s="${f.kind==='price'||f.kind==='err'?'resolved':'disputed'}">${f.kind==='price'||f.kind==='err'?'Mark handled':'Mark disputed'}</button>`:st==='disputed'?'<button class="btn ghost" id="stBtn" data-s="resolved">Credit received</button>':'<button class="btn ghost" id="stBtn" data-s="open">Reopen</button>';
   openDrawer(STAT_PILL[st][0]+' · '+f.tags[0][1],f.title,body,foot);
   const sb=$('#stBtn');if(sb)sb.onclick=()=>{setStatus(f,sb.dataset.s);closeDrawer();toast(sb.dataset.s==='resolved'?'Marked as recovered':sb.dataset.s==='disputed'?'Marked as in dispute':'Reopened')};
-  if(f.kind==='price'){const upd=()=>{const inc=+$('#simInc').value;$('#simIncV').textContent=money(inc,2);const ch=[...($('#simDel').checked?['DoorDash','Uber Eats','Grubhub']:[]),...($('#simStore').checked?['In-store']:[])];const d=simulate(f.affected.filter(k=>k!=='knots'),inc,ch);$('#simOut').innerHTML=chartHTML({type:'sim',data:d,noexec:true}).replace('class="minichart"','class="minichart" style="margin:0"');return{inc,ch,d}};
-    ['simInc','simDel','simStore'].forEach(id=>$('#'+id).oninput=upd);upd();
-    const reviewButton=$('#dFoot [data-review-sim]');reviewButton.onclick=()=>reviewSimulation(reviewButton,simulationSpec(upd().d));
-    $('#planBtn').onclick=()=>{const {inc,ch,d}=upd();const items=f.affected.filter(k=>k!=='knots');const plan=`Menu price change plan · ${new Date().toLocaleDateString()}\n\n${items.map(k=>`${MENU[k].name}: ${money(MENU[k].price,2)} → ${money(MENU[k].price+inc,2)}`).join('\n')}\n\nWhere to apply:\n${ch.map(c=>c==='In-store'?'- Square POS: Items → edit price (or via Square Catalog API)':`- ${c}: Merchant portal → Menu → edit item price`).join('\n')}\n\nExpected: ${signed(d.extra_profit_per_week)} a week, assuming order volume holds.`;
+  if(f.kind==='price'){const upd=async()=>{const inc=+$('#simInc').value;$('#simIncV').textContent=money(inc,2);const ch=[...($('#simDel').checked?['DoorDash','Uber Eats','Grubhub']:[]),...($('#simStore').checked?['In-store']:[])];const d=await simulate(f.affected.filter(k=>k!=='knots'),inc,ch);$('#simOut').innerHTML=chartHTML({type:'sim',data:d,noexec:true}).replace('class="minichart"','class="minichart" style="margin:0"');return{inc,ch,d}};
+    ['simInc','simDel','simStore'].forEach(id=>$('#'+id).oninput=()=>upd().catch(e=>toast(e.message)));upd().catch(e=>toast(e.message));
+    const reviewButton=$('#dFoot [data-review-sim]');reviewButton.onclick=async()=>{try{await reviewSimulation(reviewButton,simulationSpec((await upd()).d))}catch(e){toast(e.message)}};
+    $('#planBtn').onclick=async()=>{const {inc,ch,d}=await upd();const items=f.affected.filter(k=>k!=='knots');const plan=`Menu price change plan · ${new Date().toLocaleDateString()}\n\n${items.map(k=>`${MENU[k].name}: ${money(MENU[k].price,2)} → ${money(MENU[k].price+inc,2)}`).join('\n')}\n\nWhere to apply:\n${ch.map(c=>c==='In-store'?'- Square POS: Items → edit price (or via Square Catalog API)':`- ${c}: Merchant portal → Menu → edit item price`).join('\n')}\n\nExpected: ${signed(d.extra_profit_per_week)} a week, assuming order volume holds.`;
       openDrawer('Change plan','Raise '+items.map(k=>MENU[k].name.toLowerCase()).join(' and ')+' by '+money(inc,2),`<div class="callout"><b>${signed(d.extra_profit_per_week)} a week if volume holds</b><span>Covers ${Math.round(d.extra_profit_per_week/Math.max(1,d.price_increase_leak_per_week)*100)}% of the ${ING[f.g].name.toLowerCase()} increase.</span></div><pre class="draft">${esc(plan)}</pre><p class="note">Delivery apps only allow menu edits through their merchant portals or partner APIs, so ProfitShield gives you the exact changes for each one. With the Square connection, in-store prices can be pushed directly.</p>`,`<button class="btn" id="cpPlan">Copy plan</button>`);$('#cpPlan').onclick=()=>copyText(plan)}}
   const cp=$('#dFoot [data-copy]');if(cp)cp.onclick=()=>copyText(draftFor(f));
   const ak=$('#dFoot [data-ask]');if(ak)ak.onclick=()=>{closeDrawer();openAssist();ask(ak.dataset.ask)};
   const g2=$('#dFoot [data-go2]');if(g2)g2.onclick=()=>{closeDrawer();PAYF=f.kind;go('payouts')};
 }
-function itemCost(k,P){return Object.entries(MENU[k].recipe).reduce((s,[g,q])=>s+q*P[g],0)}
+function itemCost(k,P){return SERVER_MODEL.menu_costs[P.__week][k]}
 
 /* ============ payouts ============ */
 let PAYF='all';
@@ -941,12 +975,13 @@ function simulationSpec(data,week=CUR,prices=Object.fromEntries(Object.entries(M
   const skus=data.items.map(name=>Object.keys(MENU).find(k=>MENU[k].name===name)).filter(Boolean);
   return {week,channels:[...data.channels],changes:skus.map(sku=>({sku,old_price:prices[sku],price:+(prices[sku]+data.increase_per_item).toFixed(2)}))};
 }
-function simulate(skus,inc,channels){
-  const units={};DB.orders.filter(o=>o.week===CUR&&channels.includes(o.channel)).forEach(o=>o.items.forEach(i=>{if(skus.includes(i.sku))units[o.channel]=(units[o.channel]||0)+i.qty}));
-  const per={};Object.entries(units).forEach(([ch,u])=>per[ch]=u*inc*(1-CONTRACT[ch]));
-  const leak=-A.findings.filter(f=>f.kind==='price').reduce((s,f)=>s+f.impact,0);
-  return{items:skus.map(k=>MENU[k].name),increase_per_item:inc,channels,units_sold_last_week:units,extra_profit_per_week_by_channel:per,extra_profit_per_week:Object.values(per).reduce((a,b)=>a+b,0),price_increase_leak_per_week:leak,assumes:'same order volume as last week'};
+async function simulate(skus,inc,channels){
+  const response=await apiFetch('/api/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({week:CUR,items:skus,increase:inc,channels})});
+  const result=await response.json();if(!response.ok)throw new Error(result.error||'Simulation failed');
+  result.price_increase_leak_per_week=-A.findings.filter(f=>f.kind==='price').reduce((sum,f)=>sum+f.impact,0);
+  return result;
 }
+
 function chartHTML(ch){
   if(!ch)return'';
   if(ch.type==='bridge'){const hl=new Set(ch.highlight||[]);const st=A.steps.filter(s=>!s.total);const mx=Math.max(...st.map(s=>Math.abs(s.value)),1);
@@ -1008,7 +1043,7 @@ function agentStats(){
   const F=A.findings,imps=BACKEND.imports||[];
   const rows=imps.reduce((s,i)=>s+(i.rows||0),0),pii=imps.reduce((s,i)=>s+(i.redacted||0),0),aiMapped=imps.filter(i=>i.mapped_by==='AI'||i.mapped_by==='AI + owner').length;
   const disp=F.filter(f=>['comm','promo','dup'].includes(f.kind));const pf=F.find(f=>f.kind==='price');
-  const sim=pf?simulate(pf.affected.filter(k=>k!=='knots'),0.75,['DoorDash','Uber Eats','Grubhub']):null;
+  const sim=pf?BACKEND.defaultSim:null;
   const repriced=Object.keys(MENU).filter(k=>Math.abs(MENU[k].price-MENU_BASE[k])>.001);
   return{ingest:[[BACKEND.on?imps.length:6,'imports'],[BACKEND.on?rows.toLocaleString():DB.orders.length.toLocaleString(),'rows read'],[pii,'personal fields removed']],
     audit:[[F.length,'leaks found'],[money(-F.reduce((s,f)=>s+Math.min(0,f.impact),0)),'at stake this week'],[A.c.orders.toLocaleString(),'orders checked']],
@@ -1046,7 +1081,7 @@ function facts(){
   return{store:'Forbes Ave Slice Co., Pittsburgh PA',week_start:CUR,this_week:weekOf(CUR).label,last_week:weekOf(prevOf(CUR)).label,
     summary:{gross_sales_this:r(c.gross),gross_sales_last:r(p.gross),profit_this:r(c.profit),profit_last:r(p.profit),orders_this:c.orders,orders_last:p.orders,food_cost_this:r(c.food),food_cost_last:r(p.food),note:'Profit is before labor and rent.'},
     profit_bridge:steps.map(s=>({step:s.label,amount:r(s.value),finding:s.fid||null})),
-    findings:findings.map(f=>({id:f.id,title:f.title,weekly_impact:r(f.impact),yearly_if_unchanged:r(f.impact*52),detail:f.sub,kind:f.kind,suggested_action:{price:'Ask supplier for contract price, compare a second distributor, or raise delivery pizza prices about $0.75',comm:'Dispute in merchant portal with the order list ProfitShield prepared',promo:'Turn off the promotion and request a credit',err:'Drinks-first packing rule and a second bag check Fri–Sat 6–9pm',dup:'Request a credit from the supplier'}[f.kind]})),
+    findings:findings.map(f=>({id:f.id,title:f.title,weekly_impact:r(f.impact),yearly_if_unchanged:r(f.impact*52),detail:f.sub,kind:f.kind,suggested_action:{price:'Ask supplier for contract price, compare a second distributor, or raise delivery pizza prices about $0.75',comm:'Dispute in merchant portal with the order list ProfitShield prepared',promo:'Turn off the promotion and request a credit',err:'Drinks-first packing rule and a second bag check Fri–Sat 6–9pm',dup:'Reconcile documents and payment evidence; do not claim duplicate payment'}[f.kind]})),
     menu_margins:Object.entries(MENU).map(([k,v])=>({item:v.name,price:v.price,food_cost_last:r(itemCost(k,p.P)),food_cost_this:r(itemCost(k,c.P)),margin_this_pct:r((1-itemCost(k,c.P)/v.price)*100)})),
     channels:Object.entries(c.byCh).map(([ch,x])=>({channel:ch,orders:x.orders,gross:r(x.gross),contract_rate:CONTRACT[ch]})),
     approved_promotions:APPROVED_PROMOS};
@@ -1066,7 +1101,7 @@ function localAnswer(q){
   const {c,p,findings,steps}=A;const t=q.toLowerCase();const F=k=>findings.filter(f=>f.kind===k);
   const line=f=>`**${f.title}** (${signed(f.impact)} this week) [${f.id}]`;
   if(/overcharg|commission|fee|rate/.test(t)){const x=F('comm');return x.length?`Yes. ${x.map(f=>`${f.title}, while your contract says ${(CONTRACT[f.ch]*100).toFixed(0)}%. That cost ${money(-f.impact,2)} this week [${f.id}].`).join(' ')}\n\nThe order list and a dispute note are ready in the evidence panel. You file it from your merchant portal.`:'No. Every delivery order this week was billed at your contract rate.'}
-  if(/twice|duplicate|double/.test(t)){const x=F('dup');return x.length?x.map(f=>`Yes. ${f.title}, so you paid ${money(-f.impact,2)} extra [${f.id}]. A credit request is drafted.`).join(' '):'No duplicate invoices this week.'}
+  if(/twice|duplicate|double/.test(t)){const x=F('dup');return x.length?x.map(f=>`${f.title} [${f.id}]. This is a suspected duplicate document; duplicate payment is not established. Reconcile payment evidence before claiming a credit.`).join(' '):'No duplicate invoices this week.'}
   if(/promo|discount|coupon/.test(t)){const x=F('promo');return x.length?x.map(f=>`${f.title}. It isn't in your approved promotions and cost you ${money(-f.impact,2)} [${f.id}].`).join(' '):'Only your approved promotions ran this week.'}
   if(/margin|item|menu|dish/.test(t)){const rows=Object.entries(MENU).map(([k,v])=>({v,d:itemCost(k,c.P)-itemCost(k,p.P),m:1-itemCost(k,c.P)/v.price})).sort((a,b)=>b.d-a.d);const top=rows[0];const pf=F('price')[0];
     return`${top.v.name} lost the most: food cost rose ${money(top.d,2)} per item, so margin is now ${(top.m*100).toFixed(1)}%. ${pf?`The cause is ${pf.title.toLowerCase()} [${pf.id}].`:''}\n\nOn DoorDash, after the ${(CONTRACT.DoorDash*100).toFixed(0)}% commission, it keeps ${((top.m-CONTRACT.DoorDash)*100).toFixed(1)}%.`}
@@ -1076,17 +1111,17 @@ function localAnswer(q){
   if(/mozz|cheese|price|supplier|sysco|invoice/.test(t)){const x=F('price');return x.length?x.map(f=>`${f.title}: ${f.sub} That's ${money(-f.impact)} this week and about ${money(-f.impact*52)} a year if it holds [${f.id}]. A note asking ${ING[f.g].vendor} for a contract price is drafted.`).join('\n\n'):'No big price changes on your invoices this week.'}
   if(!/why|drop|profit|down|less|lose|lost|happen|week|money|summary|overview/.test(t))return`Without the AI connected I can only answer a few kinds of questions: why profit changed, overcharges, promotions, duplicate invoices, missing-item charges, menu margins, what to fix first, and "what if I raise prices". With the AI on, ask anything about your orders, payouts and invoices.`;
   const drops=steps.filter(s=>!s.total&&s.value<0).sort((a,b)=>a.value-b.value);const ups=steps.filter(s=>!s.total&&s.value>0);
-  return`Profit went from ${money(p.profit)} to ${money(c.profit)} (${signed(c.profit-p.profit)}), even though sales were ${signed(c.gross-p.gross)}.\n\n${ups.length?`Helping: ${ups.map(s=>`${s.label.toLowerCase()} ${signed(s.value)}`).join(', ')}.\n`:''}Hurting: ${drops.map(s=>`${s.label.toLowerCase()} ${signed(s.value)}${s.fid?` [${s.fid}]`:''}`).join(', ')}.\n\nMost of the drop is money you can recover or stop: overcharges, a promo you didn't approve and a double payment.`;
+  return`Profit went from ${money(p.profit)} to ${money(c.profit)} (${signed(c.profit-p.profit)}), even though sales were ${signed(c.gross-p.gross)}.\n\n${ups.length?`Helping: ${ups.map(s=>`${s.label.toLowerCase()} ${signed(s.value)}`).join(', ')}.\n`:''}Hurting: ${drops.map(s=>`${s.label.toLowerCase()} ${signed(s.value)}${s.fid?` [${s.fid}]`:''}`).join(', ')}.\n\nMost of the drop is money you can recover or stop: overcharges, a promo you didn't approve and a duplicate document requiring payment reconciliation.`;
 }
 async function ask(q){
   q=q.trim();if(!q)return;const askedWeek=CUR,askedPrices=Object.fromEntries(Object.entries(MENU).map(([k,v])=>[k,v.price]));renderMsg('me',q);HISTORY.push({role:'user',content:q});
   if(/^(execute|apply|do it|go ahead|ship it)/i.test(q)){renderMsg('bot','Chat commands cannot execute changes. Use Review sandbox changes on the specific simulation, inspect the plan, then type its confirmation phrase.',[],'');return}
   const wait=document.createElement('div');wait.className='typing';wait.textContent=AI.on?'Checking your records…':'Thinking…';$('#msgs').appendChild(wait);
   let text,cites=[],meta='',chart=null,tools=[];
-  const local=()=>{const t=q.toLowerCase();if(/what if|raise|increase price|simulat|charge more/.test(t)){const pf=A.findings.find(f=>f.kind==='price');const skus=pf?pf.affected:['marg','pep'];const inc=+((t.match(/\$?(\d+(?:\.\d+)?)/)||[])[1]||0.75);const d=simulate(skus,inc>5?0.75:inc,['DoorDash','Uber Eats','Grubhub','In-store']);chart={type:'sim',data:d};return`Raising ${d.items.join(' and ').toLowerCase()} by ${money(d.increase_per_item,2)} everywhere would bring back about ${money(d.extra_profit_per_week)} a week after app commissions, against a ${money(d.price_increase_leak_per_week)} weekly hit from the price increase${pf?` [${pf.id}]`:''}.\n\nThis assumes order volume holds. Try a smaller increase on delivery only if you're worried about in-store regulars.`}
+  const local=async()=>{const t=q.toLowerCase();if(/what if|raise|increase price|simulat|charge more/.test(t)){const pf=A.findings.find(f=>f.kind==='price');const skus=pf?pf.affected:['marg','pep'];const inc=+((t.match(/\$?(\d+(?:\.\d+)?)/)||[])[1]||0.75);const d=await simulate(skus,inc>5?0.75:inc,['DoorDash','Uber Eats','Grubhub','In-store']);chart={type:'sim',data:d};return`Raising ${d.items.join(' and ').toLowerCase()} by ${money(d.increase_per_item,2)} everywhere would bring back about ${money(d.extra_profit_per_week)} a week after app commissions, against a ${money(d.price_increase_leak_per_week)} weekly hit from the price increase${pf?` [${pf.id}]`:''}.\n\nThis assumes order volume holds. Try a smaller increase on delivery only if you're worried about in-store regulars.`}
     if(!/overcharg|commission|fee|twice|duplicate|promo|discount|margin|item|menu|missing|refund|error|fix|first|mozz|cheese|supplier|invoice/.test(t))chart={type:'bridge'};return localAnswer(q)};
-  if(AI.on){try{const pw=prevOf(CUR);const r=await apiFetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,facts:facts(),history:HISTORY.slice(-6),week:BACKEND.on?CUR:null,prev_week:BACKEND.on?pw:null})});const j=await r.json();if(!r.ok||j.error)throw new Error(j.error);text=j.answer;cites=j.cites||[];tools=j.tools||[];chart=j.chart||null;meta=`Answered by ${AI.model}`}catch(e){text=local();meta='AI call failed: '+String(e.message||e).slice(0,220)+'. Showing the built-in answer instead.'}}
-  else{await new Promise(r=>setTimeout(r,350));text=local();meta=BACKEND.on?'AI is off: the server has no OPENROUTER_API_KEY. Set it in the same terminal and restart server.py.':'Preview mode: open http://localhost:8000 with server.py running for the AI agent.'}
+  if(AI.on){try{const pw=prevOf(CUR);const r=await apiFetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,facts:facts(),history:HISTORY.slice(-6),week:BACKEND.on?CUR:null,prev_week:BACKEND.on?pw:null})});const j=await r.json();if(!r.ok||j.error)throw new Error(j.error);text=j.answer;cites=j.cites||[];tools=j.tools||[];chart=j.chart||null;meta=`Answered by ${AI.model}`}catch(e){text=await local();meta='AI call failed: '+String(e.message||e).slice(0,220)+'. Showing the built-in answer instead.'}}
+  else{await new Promise(r=>setTimeout(r,350));text=await local();meta=BACKEND.on?'AI is off: the server has no OPENROUTER_API_KEY. Set it in the same terminal and restart server.py.':'Preview mode: open http://localhost:8000 with server.py running for the AI agent.'}
   if(chart&&chart.type==='sim'&&chart.data&&chart.data.items)chart.reviewSpec=simulationSpec(chart.data,askedWeek,askedPrices);
   if(!chart){const ids=[...new Set([...(cites||[]),...((text||'').match(/F\d+/g)||[])])];chart={type:'bridge',highlight:ids}}
   wait.remove();renderMsg('bot',text,cites,meta,chart,tools);HISTORY.push({role:'assistant',content:text});
@@ -1097,12 +1132,12 @@ $$('#sugg button').forEach(b=>b.onclick=()=>ask(b.textContent));
 function greet(){$('#msgs').innerHTML='';renderMsg('bot',`I've checked ${A.c.orders.toLocaleString()} orders, every payout line and your supplier invoices for the week of ${weekOf(CUR).label}. ${A.findings.length?`The biggest leak is ${A.findings[0].title.charAt(0).toLowerCase()+A.findings[0].title.slice(1)} [${A.findings[0].id}].`:'Nothing unusual.'} Ask me anything, or try a suggestion below.`)}
 
 /* ============ routing ============ */
-const VIEWS=['overview','leaks','agents','payouts','invoices','margins','sources'];
-const HEAD={overview:['Home',()=>`Forbes Ave Slice Co. · week of ${weekOf(CUR).label}`],leaks:['Money leaks',()=>'Everything that cost you money last week, with the evidence and the fix.'],agents:['Agents',()=>'Six agents watch your books. They prepare everything; you approve what changes.'],payouts:['Payouts',()=>'Every delivery order, line by line, as the apps paid it.'],invoices:['Invoices',()=>'Supplier invoices and what you paid per ingredient.'],margins:['Menu & margins',()=>'What each dish really earns, in store and on delivery.'],sources:['Connections',()=>'Where your numbers come from.']};
+const VIEWS=['demo','overview','leaks','agents','payouts','invoices','margins','sources'];
+const HEAD={demo:['Financial workspace',()=> 'Full imported demo dataset · exact cents · no external AI or writes'],overview:['Home',()=>`Forbes Ave Slice Co. · week of ${weekOf(CUR).label}`],leaks:['Money leaks',()=>'Everything that cost you money last week, with the evidence and the fix.'],agents:['Agents',()=>'Six agents watch your books. They prepare everything; you approve what changes.'],payouts:['Payouts',()=>'Every delivery order, line by line, as the apps paid it.'],invoices:['Invoices',()=>'Supplier invoices and what you paid per ingredient.'],margins:['Menu & margins',()=>'What each dish really earns, in store and on delivery.'],sources:['Connections',()=>'Where your numbers come from.']};
 let VIEW='overview';
-function go(v){if(v==='ask'){openAssist();return}if(!VIEWS.includes(v))v='overview';VIEW=v;$$('.view').forEach(s=>s.classList.toggle('active',s.id==='v-'+v));$$('.nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.go===v?'page':'false'));
+function go(v){if(v==='ask'){openAssist();return}if(!VIEWS.includes(v))v='overview';VIEW=v;$('.actions .select').hidden=v==='demo';$$('.view').forEach(s=>s.classList.toggle('active',s.id==='v-'+v));$$('.nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.go===v?'page':'false'));
   $('#pageTitle').textContent=HEAD[v][0];$('#pageSub').textContent=HEAD[v][1]();if(location.hash!=='#'+v)history.replaceState(null,'','#'+v);
-  ({agents:renderAgents,leaks:renderLeaks,payouts:renderPayouts,invoices:renderInvoices,margins:renderMargins,sources:renderSources}[v]||(()=>{}))();window.scrollTo(0,0)}
+  ({demo:()=>window.refreshPrototype&&window.refreshPrototype(),agents:renderAgents,leaks:renderLeaks,payouts:renderPayouts,invoices:renderInvoices,margins:renderMargins,sources:renderSources}[v]||(()=>{}))();window.scrollTo(0,0)}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b){e.preventDefault();go(b.dataset.go)}});
 window.addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(h!==VIEW)go(h)});
 document.addEventListener('keydown',e=>{if(e.key==='/'&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){e.preventDefault();openAssist()}});
@@ -1113,8 +1148,11 @@ function recompute(){A=analyze();renderWeekSeg();renderOverview();go(VIEW);if(!H
 async function loadBackend(){
   const r=await apiFetch('/api/data',{cache:'no-store'});const d=await r.json();
   if(!d.weeks||!d.weeks.length)throw new Error('no data yet');
+  SERVER_MODEL=d.financial_model;
   WEEKS=d.weeks;DB={orders:d.orders,errors:d.errors,invoices:d.invoices};Object.keys(MENU).forEach(k=>MENU[k].price=(d.menu_prices&&d.menu_prices[k])?d.menu_prices[k].price:MENU_BASE[k]);BACKEND.imports=d.imports||[];BACKEND.menu=d.menu_prices||{};BACKEND.square=!!(d.square&&d.square.configured);
   if(!WEEKS.some(w=>w.id===CUR)){const counts=WEEKS.map(w=>DB.orders.filter(o=>o.week===w.id&&o.channel!=='In-store').length);const mx=Math.max(...counts);let i=counts.length-1;while(i>0&&counts[i]<mx*.5)i--;CUR=WEEKS[Math.max(1,i)].id}
+  const simResponse=await apiFetch('/api/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({week:CUR,items:['marg','pep'],increase:.75,channels:['DoorDash','Uber Eats','Grubhub']})});
+  if(!simResponse.ok)throw new Error('Recommended scenario could not be calculated');BACKEND.defaultSim=await simResponse.json();
 }
 (async function boot(){
   let health=null;
@@ -1122,8 +1160,43 @@ async function loadBackend(){
     if(!r.ok)throw new Error('Health check failed');health=await r.json();await loadBackend();BACKEND.on=true;
   }catch(e){document.querySelector('main').textContent='Unable to load your live database. Reload to retry. '+e.message;return;}
   AI.on=!!(health&&health.ai);AI.model=(health&&health.model)||'';
-  const h0=location.hash.slice(1);VIEW=VIEWS.includes(h0)?h0:'overview';recompute();if(h0==='ask')openAssist();
-  $('#aiDot').classList.toggle('on',AI.on);$('#aiText').textContent=AI.on?`AI connected · ${AI.model}`:'AI offline · preview mode';
+  const h0=location.hash.slice(1);VIEW=VIEWS.includes(h0)?h0:'demo';recompute();if(h0==='ask')openAssist();
+  $('#aiDot').classList.toggle('on',AI.on);$('#aiText').textContent=AI.on?`AI connected · ${AI.model}`:'Deterministic fallback · AI offline';
   $('#dataText').textContent=BACKEND.on?`Live database · ${DB.orders.length.toLocaleString()} orders`:'Example data in this preview';
 })();
 </script>
+
+<style>button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid #145cc5;outline-offset:3px}#v-demo h3{margin:8px 0}#v-demo input:not([type=file]){padding:8px;margin:8px;max-width:100%}#v-demo table{width:100%}#v-demo pre{white-space:pre-wrap;overflow-wrap:anywhere}#v-demo .evidence{overflow-wrap:anywhere}</style>
+<script>
+(()=>{
+'use strict';
+const el=id=>document.getElementById(id);
+const currency=v=>v===null?'Unavailable':new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(v/100);
+const metricLabels={gross_sales:'Gross sales',refunds:'Refunds / credits',restaurant_promotions:'Restaurant-funded promotions',platform_promotions:'Platform-funded promotions (informational)',net_sales:'Net sales',commissions:'Platform commissions',commission_overcharges:'Commission overcharges (included in commissions)',other_platform_fees:'Other platform fees',food_costs:'Food costs',other_variable_costs:'Other variable costs',contribution_margin:'Contribution margin',accounting_profit:'Accounting profit'};
+let state=null;
+function text(tag,value){const n=document.createElement(tag);n.textContent=value;return n}
+function clear(id){const n=el(id);n.replaceChildren();return n}
+function button(label,fn){const b=text('button',label);b.type='button';b.className='btn ghost sm';b.onclick=()=>task(b,fn);return b}
+async function request(operation,payload){const r=await fetch('/api/prototype'+(operation?'/'+operation:''),{method:operation?'POST':'GET',headers:operation?{'Content-Type':'application/json'}:{},body:operation?JSON.stringify(payload):undefined,credentials:'same-origin',cache:'no-store'});const out=await r.json();if(!r.ok)throw new Error(out.error||'Request failed');return out}
+async function task(control,fn){el('demoError').textContent='';el('demoStatus').textContent='Working…';if(control)control.disabled=true;try{await fn();el('demoStatus').textContent='Ready. Changes are stored locally in SQLite.'}catch(error){el('demoError').textContent=error.message;el('demoStatus').textContent='Action was not completed.'}finally{if(control)control.disabled=false}}
+function baselineView(b){const box=document.createElement('div');box.append(text('h3','Authoritative financial baseline'));const table=document.createElement('table');const caption=text('caption','Dollar amounts. Positive costs/refunds are deductions; negative values are credits. No double-counted deductions. Baseline '+b.baseline_id.slice(0,12));table.append(caption);const head=document.createElement('thead');const tr=document.createElement('tr');for(const label of ['Metric','Amount']){const th=text('th',label);th.scope='col';tr.append(th)}head.append(tr);table.append(head);const body=document.createElement('tbody');for(const [key,value] of Object.entries(b.money_cents)){const row=document.createElement('tr');const th=text('th',metricLabels[key]||key);th.scope='row';row.append(th,text('td',currency(value)));body.append(row)}table.append(body);box.append(table,text('p','Contribution margin: '+(b.contribution_margin_pct_display===null?'Unavailable':b.contribution_margin_pct_display+'%')),text('p',b.accounting_profit_status));if(b.missing_fields.length)box.append(text('p','Missing fields: '+b.missing_fields.map(x=>x.id+' / '+x.field).join(', ')));return box}
+function render(){clear('demoBaseline').append(baselineView(state.baseline));el('demoBriefing').textContent=state.briefing;const report=clear('demoImportReport');report.append(text('p',state.label+' · '+state.rows.length+' normalized transactions · '+state.duplicates_skipped+' duplicate rows skipped.'));for(const r of state.rejected)report.append(text('p','Rejected row '+(r.row||r.id)+': '+r.reason));const findings=clear('demoFindings');for(const f of state.findings){const article=document.createElement('article');article.className='box';article.style.padding='12px';article.append(text('h4',f.type.replaceAll('_',' ')+' · '+f.status),text('p',f.reason),text('p','Impact / exposure: '+(f.impact_cents===null?'Not established':currency(f.impact_cents))),text('p','Next: '+f.next_action));const evidence=text('details','');evidence.append(text('summary','Evidence '+f.id));for(const ref of f.evidence)evidence.append(text('p',ref));for(const row of state.rows.filter(r=>f.evidence.includes(r.channel+':'+r.id)))evidence.append(text('pre',JSON.stringify(row,null,2)));for(const doc of state.documents.filter(d=>f.evidence.includes(d.source)))evidence.append(text('pre',JSON.stringify(doc,null,2)));article.append(evidence,button('Explain finding',async()=>showGuru(await request('guru',{question:el('demoQuestion').value,finding_id:f.id}))),button('Prepare draft',async()=>showDraft(await request('dispute',{finding_id:f.id}))));findings.append(article)}
+ const scenarios=clear('demoScenarios');for(const s of state.scenarios){const box=document.createElement('div');box.append(text('h4',s.name),text('p','Before '+currency(s.before.money_cents.contribution_margin)+' → after '+currency(s.after.money_cents.contribution_margin)+'; change '+currency(s.delta_cents)),text('p',s.assumptions.join('; ')),button('Propose simulated execution',async()=>{await request('propose',{scenario_id:s.id});await refresh()}));scenarios.append(box)}
+ const actions=clear('demoActions');for(const a of state.actions){const box=document.createElement('div');box.append(text('h4',a.scenario.name+' · '+a.state),text('p',a.mode),text('p','History: '+a.history.join(' → ')),text('p','Requested impact: '+currency(a.scenario.delta_cents)),text('p',a.result||a.error||'Awaiting explicit approval. Proposal expires in ten minutes.'));if(a.state==='Proposed'){const id='approval-'+a.id;const label=text('label','Type '+a.confirmation+' to approve only this simulation');label.htmlFor=id;const input=document.createElement('input');input.id=id;input.autocomplete='off';const approve=button('Approve simulation',async()=>{await request('approve',{action_id:a.id,confirmation:input.value});await refresh()});approve.disabled=true;input.oninput=()=>approve.disabled=input.value!==a.confirmation;box.append(label,input,approve)}actions.append(box)}
+}
+function showGuru(out){const box=clear('demoGuru');box.append(text('p',out.mode),text('p',out.answer),text('p',out.limitations));for(const f of out.evidence)box.append(text('p',f.id+': '+f.evidence.join(', ')));box.append(text('p','Baseline '+out.baseline.baseline_id.slice(0,12)))}
+function showDraft(out){const box=clear('demoDispute');box.append(text('h4',out.platform_or_supplier+' · '+out.owner_review_status),text('p',out.reason),text('p','Claim: '+(out.claim_amount_cents===null?'Not established — inquiry only':currency(out.claim_amount_cents))),text('p',out.note),text('pre',JSON.stringify(out,null,2)))}
+async function refresh(){state=await request();render();if(state.disputes.length)showDraft(state.disputes[state.disputes.length-1])}
+window.refreshPrototype=()=>task(null,refresh);
+el('demoLoad').onclick=()=>task(el('demoLoad'),async()=>{state=await request('load-golden',{});clear('demoGuru');clear('demoDispute');render()});
+el('demoReset').onclick=()=>{if(window.confirm('Reset only the connected synthetic demo, its scenarios and action history? Original sample imports are preserved.'))task(el('demoReset'),async()=>{state=await request('reset',{});clear('demoGuru');clear('demoDispute');render()})};
+el('demoRefresh').onclick=()=>task(el('demoRefresh'),refresh);
+el('demoFile').onchange=()=>task(el('demoFile'),async()=>{const file=el('demoFile').files[0];if(!file)return;if(file.size>4*1024*1024)throw new Error('CSV exceeds 4 MiB');state=await request('import',{text:await file.text(),filename:file.name});render();el('demoFile').value='' });
+el('demoGuruForm').onsubmit=e=>{e.preventDefault();task(e.submitter,async()=>showGuru(await request('guru',{question:el('demoQuestion').value})))};
+el('demoSimForm').onsubmit=e=>{e.preventDefault();task(e.submitter,async()=>{await request('simulate',{name:el('demoScenarioName').value,changes:{price_change_pct:Number(el('demoPrice').value),ingredient_cost_change_pct:Number(el('demoFood').value),commission_rate_change:Number(el('demoCommission').value)/100}});await refresh()})};
+})();
+</script>
+<style>
+@media(max-width:820px){.navwrap{max-width:100%;min-width:0}.navgroup{flex:0 0 auto}.nav{max-width:100%}.side{max-width:100vw}#v-demo .row{align-items:stretch}}
+#v-demo{min-width:0;overflow-wrap:anywhere}#v-demo table{table-layout:fixed}#v-demo td,#v-demo th{white-space:normal;overflow-wrap:anywhere}
+</style>

@@ -1,0 +1,152 @@
+{
+  "negative_adjustment": [
+    {
+      "id": "EDGE-CREDIT",
+      "source": "demo_data/golden.csv:2",
+      "date": "2026-10-26",
+      "channel": "DoorDash",
+      "gross_sales": "-100",
+      "refunds": "-10",
+      "restaurant_promotions": "0",
+      "platform_promotions": "0",
+      "commissions": "-20",
+      "other_platform_fees": "0",
+      "food_costs": "0",
+      "other_variable_costs": "0",
+      "contract_rate": "0.20",
+      "contract_basis": "gross_sales",
+      "promotion_approved": "false"
+    }
+  ],
+  "duplicate_import": [
+    {
+      "id": "G-DD",
+      "source": "demo_data/golden.csv:2",
+      "date": "2026-10-26",
+      "channel": "DoorDash",
+      "gross_sales": "4000",
+      "refunds": "300",
+      "restaurant_promotions": "500",
+      "platform_promotions": "0",
+      "commissions": "900",
+      "other_platform_fees": "0",
+      "food_costs": "1000",
+      "other_variable_costs": "80",
+      "contract_rate": "0.20",
+      "contract_basis": "gross_sales",
+      "promotion_approved": "false"
+    },
+    {
+      "id": "G-DD",
+      "source": "downloaded-copy.csv:2",
+      "date": "2026-10-26",
+      "channel": "DoorDash",
+      "gross_sales": "4000",
+      "refunds": "300",
+      "restaurant_promotions": "500",
+      "platform_promotions": "0",
+      "commissions": "900",
+      "other_platform_fees": "0",
+      "food_costs": "1000",
+      "other_variable_costs": "80",
+      "contract_rate": "0.20",
+      "contract_basis": "gross_sales",
+      "promotion_approved": "false"
+    }
+  ],
+  "missing_field": [
+    {
+      "id": "EDGE-MISSING",
+      "source": "demo_data/golden.csv:2",
+      "date": "2026-10-26",
+      "channel": "DoorDash",
+      "gross_sales": "4000",
+      "refunds": "300",
+      "restaurant_promotions": "500",
+      "platform_promotions": "0",
+      "commissions": "900",
+      "other_platform_fees": "0",
+      "food_costs": "",
+      "other_variable_costs": "80",
+      "contract_rate": "0.20",
+      "contract_basis": "gross_sales",
+      "promotion_approved": "false"
+    }
+  ],
+  "zero_sales": [
+    {
+      "id": "EDGE-ZERO",
+      "source": "demo_data/golden.csv:2",
+      "date": "2026-10-26",
+      "channel": "DoorDash",
+      "gross_sales": "0",
+      "refunds": "0",
+      "restaurant_promotions": "0",
+      "platform_promotions": "0",
+      "commissions": "0",
+      "other_platform_fees": "0",
+      "food_costs": "0",
+      "other_variable_costs": "0",
+      "contract_rate": "0.20",
+      "contract_basis": "gross_sales",
+      "promotion_approved": "false"
+    }
+  ],
+  "malformed": [
+    {
+      "id": "EDGE-BAD",
+      "source": "demo_data/golden.csv:2",
+      "date": "2026-10-26",
+      "channel": "DoorDash",
+      "gross_sales": "NaN",
+      "refunds": "300",
+      "restaurant_promotions": "500",
+      "platform_promotions": "0",
+      "commissions": "900",
+      "other_platform_fees": "0",
+      "food_costs": "1000",
+      "other_variable_costs": "80",
+      "contract_rate": "0.20",
+      "contract_basis": "gross_sales",
+      "promotion_approved": "false"
+    }
+  ],
+  "repeated_error_charges": [
+    {
+      "id": "EDGE-E1",
+      "source": "demo_data/golden.csv:2",
+      "date": "2026-10-26",
+      "channel": "DoorDash",
+      "gross_sales": "4000",
+      "refunds": "300",
+      "restaurant_promotions": "500",
+      "platform_promotions": "0",
+      "commissions": "900",
+      "other_platform_fees": "5",
+      "food_costs": "1000",
+      "other_variable_costs": "80",
+      "contract_rate": "0.20",
+      "contract_basis": "gross_sales",
+      "promotion_approved": "false",
+      "fee_reason": "Missing item"
+    },
+    {
+      "id": "EDGE-E2",
+      "source": "demo_data/golden.csv:2",
+      "date": "2026-10-26",
+      "channel": "DoorDash",
+      "gross_sales": "4000",
+      "refunds": "300",
+      "restaurant_promotions": "500",
+      "platform_promotions": "0",
+      "commissions": "900",
+      "other_platform_fees": "7",
+      "food_costs": "1000",
+      "other_variable_costs": "80",
+      "contract_rate": "0.20",
+      "contract_basis": "gross_sales",
+      "promotion_approved": "false",
+      "fee_reason": "Missing item"
+    }
+  ]
+}

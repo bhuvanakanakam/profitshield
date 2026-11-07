@@ -1,0 +1,5 @@
+id,source,date,channel,gross_sales,refunds,restaurant_promotions,platform_promotions,commissions,other_platform_fees,food_costs,other_variable_costs,contract_rate,contract_basis,promotion_approved
+G-DD,demo_data/golden.csv:2,2026-10-26,DoorDash,4000,300,500,0,900,0,1000,80,0.20,gross_sales,false
+G-UE,demo_data/golden.csv:3,2026-10-27,Uber Eats,3000,0,0,100,400,0,900,60,0.15,gross_sales,true
+G-GH,demo_data/golden.csv:4,2026-10-28,Grubhub,2000,0,0,0,200,0,600,40,0.10,gross_sales,true
+G-SQ,demo_data/golden.csv:5,2026-10-29,In-store,1000,0,0,0,0,0,300,20,0,gross_sales,true

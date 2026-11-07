@@ -19,7 +19,7 @@ def load_backend():
     # Import the actual source without loading the developer's .env or starting it.
     with patch.object(Path, 'exists', lambda path: False if path == ROOT / '.env' else exists(path)), patch.dict(
             os.environ, {'OPENROUTER_API_KEY': '', 'OPENROUTER_MODEL': 'fixture-model',
-                         'OPENROUTER_VISION_MODEL': 'fixture-model', 'SQUARE_ACCESS_TOKEN': '',
+                         'OPENROUTER_VISION_MODEL': 'fixture-model', 'PROFITSHIELD_AI_PRIVACY_APPROVED': '', 'SQUARE_ACCESS_TOKEN': '',
                          'SQUARE_ENV': 'sandbox', 'SQUARE_VERSION': '2024-10-17',
                          'STORE_TZ': 'America/New_York', 'PORT': '8000', 'BACKHOUSE_DB': ':memory:'}):
         spec.loader.exec_module(module)

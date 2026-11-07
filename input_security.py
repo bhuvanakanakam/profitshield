@@ -14,9 +14,11 @@ ROW_LIMIT = 20000
 CHANNELS = {'DoorDash', 'Uber Eats', 'Grubhub', 'In-store'}
 UNITS = {'ea', 'lb', 'oz', 'kg', 'g', 'l', 'ml', 'case', 'pack', 'box', 'gal', 'qt', 'pt', 'ct', 'bottle'}
 POST_ROUTES = {'/api/import', '/api/invoices', '/api/menu/apply', '/api/reset',
-               '/api/square/sync', '/api/square/seed', '/api/ask', '/api/extract'}
+               '/api/square/sync', '/api/square/seed', '/api/ask', '/api/extract',
+               '/api/menu/preview', '/api/square/seed/preview'}
 EXPENSIVE_ROUTES = {'/api/ask', '/api/extract', '/api/import', '/api/square/sync',
-                    '/api/square/seed', '/api/menu/apply', '/api/reset', '/api/invoices'}
+                    '/api/square/seed', '/api/menu/apply', '/api/reset', '/api/invoices',
+                    '/api/menu/preview', '/api/square/seed/preview'}
 
 
 def text(value, name, maximum=255, required=False):
@@ -147,20 +149,31 @@ def validate_payload(route, p, menu, ingredients):
             raise ValueError('Invoice requires 1–500 lines')
         for line in p['lines']:
             invoice_line(line, ingredients)
-    elif route == '/api/menu/apply':
-        fields(p, {'changes', 'channels'}, {'changes'})
+    elif route == '/api/menu/preview':
+        fields(p, {'changes', 'channels', 'week'}, {'changes', 'channels', 'week'})
+        iso_date(p['week'], 'week')
         if not isinstance(p['changes'], list) or not 1 <= len(p['changes']) <= len(menu):
             raise ValueError('Invalid menu changes')
         seen = set()
         for change in p['changes']:
-            fields(change, {'sku', 'price'}, {'sku', 'price'})
+            fields(change, {'sku', 'price', 'old_price'}, {'sku', 'price', 'old_price'})
             sku = change['sku']
             if not isinstance(sku, str) or sku not in menu or sku in seen:
                 raise ValueError('Unknown or repeated menu item')
             seen.add(sku)
             number(change['price'], 'price', minimum=0.01, maximum=1e6)
+            number(change['old_price'], 'old_price', minimum=0.01, maximum=1e6)
         if 'channels' in p:
             choices(p['channels'], CHANNELS, 'channels', 4)
+    elif route in ('/api/menu/apply', '/api/square/seed'):
+        required = {'plan_id', 'confirmation'} | ({'week'} if route == '/api/menu/apply' else set())
+        fields(p, required, required)
+        text(p['plan_id'], 'plan id', 43, required=True)
+        if not re.fullmatch(r'[A-Za-z0-9_-]{43}', p['plan_id']):
+            raise ValueError('Invalid plan id')
+        text(p['confirmation'], 'confirmation', 100, required=True)
+        if 'week' in p:
+            iso_date(p['week'], 'week')
     elif route == '/api/extract':
         fields(p, {'image', 'filename', 'ingredients'}, {'image'})
         upload(p['image'])
@@ -300,3 +313,9 @@ def validate_tool_args(name, args, menu):
         choices(args['channels'], CHANNELS, 'channels', 4)
     if 'items' in args:
         choices(args['items'], set(menu) | {v[0] for v in menu.values()}, 'items', len(menu))
+
+# Local connected demonstration: same bounded JSON and same-origin transport.
+POST_ROUTES.update('/api/prototype/' + operation for operation in (
+    'load-golden', 'reset', 'import', 'guru', 'simulate', 'propose', 'approve', 'dispute'))
+
+POST_ROUTES.add('/api/simulate')

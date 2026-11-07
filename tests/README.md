@@ -89,3 +89,19 @@ full UI/end-to-end, load, security or coverage certification. Existing audit bug
 such as tiny bridge adjustments, unknown-item costs and invoice/payment semantics
 remain separate work. Other security PRs bring their own regression suites;
 retarget/reconcile API contracts and run all tests when integrating them.
+
+## Connected hackathon financial workspace
+
+`python3 -m unittest tests.test_prototype -v` covers the exact golden dataset,
+signed credits, missing values, promotion funding, supplied contractual bases,
+no duplicate-payment inference, connected persistence and HTTP security.
+`python3 tests/browser_prototype.py` executes the complete judge journey with
+all external transport blocked (requires preinstalled Playwright/Chromium).
+
+The new reference is `demo_data/golden.csv`, with isolated controls in
+`demo_data/edge_cases.json` and invoice observations in `demo_data/documents.json`.
+See `DEMO_VERIFICATION.md` for the executed counts, limits and the documented
+historical correction: duplicate invoice documents no longer reduce margin.
+The original audit fixture is retained as a historical record; the corrected
+CSV-backed weekly change is +$164.03 estimated contribution margin. JavaScript
+checks now consume the backend financial model rather than recalculate profit.

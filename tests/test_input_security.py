@@ -92,6 +92,16 @@ class InputHTTPTests(HTTPFixture):
                 response = conn.recv(4096)
             self.assertIn(b' 400 ', response.split(b'\r\n')[0])
 
+    def test_new_review_routes_cannot_bypass_input_security(self):
+        routes = {'/api/menu/preview': 'preview_menu', '/api/menu/apply': 'apply_menu',
+                  '/api/square/seed/preview': 'preview_seed', '/api/square/seed': 'confirm_seed'}
+        for route, function in routes.items():
+            with self.subTest(route=route), patch.object(server, function) as dispatch:
+                self.assertEqual(self.request('POST', route, {}, headers={'Origin': 'https://attacker.test'})[0], 403)
+                self.assertEqual(self.request('POST', route, {}, headers={'Content-Type': 'text/plain'})[0], 415)
+                self.assertEqual(self.request('POST', route, raw=b'[]')[0], 400)
+                dispatch.assert_not_called()
+
     def test_throttling_returns_retry_after_before_dispatch(self):
         with patch.object(server, 'REQUEST_LIMITER', RequestLimiter(2, 100, 100)), patch.object(server, 'reset') as reset:
             self.assertEqual(self.request('POST', '/api/reset', {})[0], 200)
