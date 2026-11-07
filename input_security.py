@@ -13,9 +13,26 @@ FILE_LIMIT = 8 * 1024 * 1024
 ROW_LIMIT = 20000
 CHANNELS = {'DoorDash', 'Uber Eats', 'Grubhub', 'In-store'}
 UNITS = {'ea', 'lb', 'oz', 'kg', 'g', 'l', 'ml', 'case', 'pack', 'box', 'gal', 'qt', 'pt', 'ct', 'bottle'}
-POST_ROUTES = {'/api/import', '/api/invoices', '/api/menu/apply', '/api/reset',
-               '/api/square/sync', '/api/square/seed', '/api/ask', '/api/extract',
-               '/api/menu/preview', '/api/square/seed/preview'}
+POST_ROUTES = {
+    '/api/import',
+    '/api/invoices',
+    '/api/menu/apply',
+    '/api/reset',
+    '/api/square/sync',
+    '/api/square/seed',
+    '/api/ask',
+    '/api/extract',
+    '/api/menu/preview',
+    '/api/square/seed/preview',
+    '/api/prototype/load-golden',
+    '/api/prototype/reset',
+    '/api/prototype/import',
+    '/api/prototype/guru',
+    '/api/prototype/simulate',
+    '/api/prototype/propose',
+    '/api/prototype/approve',
+    '/api/prototype/dispute',
+}
 EXPENSIVE_ROUTES = {'/api/ask', '/api/extract', '/api/import', '/api/square/sync',
                     '/api/square/seed', '/api/menu/apply', '/api/reset', '/api/invoices',
                     '/api/menu/preview', '/api/square/seed/preview'}
