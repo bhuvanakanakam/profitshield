@@ -81,7 +81,7 @@ class HTTPFixture(unittest.TestCase):
         cls.root_patch.stop()
         cls.temp.cleanup()
 
-    def request(self, method, path, payload=None, headers=None, raw=None):
+    def request(self, method, path, payload=None, headers=None, raw=None, authenticated=True):
         conn = http.client.HTTPConnection(*self.httpd.server_address, timeout=5)
         try:
             body = json.dumps(payload) if payload is not None else None
