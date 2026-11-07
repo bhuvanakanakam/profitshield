@@ -6,9 +6,8 @@ and prepare an owner-reviewed dispute draft. The connected hackathon workspace
 uses one backend financial engine; it does not require credentials or an LLM.
 
 This is a **local synthetic prototype**, not a hosted accounting or payments
-system. It binds to `127.0.0.1`. Owner authentication and organization/location
-isolation are not implemented on this development base: do not expose this branch
-publicly, use production credentials, or load customer records.
+system. It binds to `127.0.0.1`. This demo intentionally has no owner login or organization/location isolation.
+Do not expose it publicly, use production credentials, or load customer records.
 
 ## Launch the judge demo
 
@@ -21,7 +20,7 @@ OPENROUTER_API_KEY='' SQUARE_ACCESS_TOKEN='' PROFITSHIELD_AI_PRIVACY_APPROVED=''
 BACKHOUSE_DB=/tmp/profitshield-hackathon.db python3 server.py
 ```
 
-Open **http://localhost:8000/#demo**. Choose **Load synthetic golden restaurant**.
+Open **http://localhost:8000/#demo** directly (no password required). Choose **Load synthetic golden restaurant**.
 The table must show $10,000 gross sales, $9,200 net sales, $4,700 contribution
 margin and **51.09%**. Accounting profit is **Unavailable — operating expenses
 incomplete**. Follow [DEMO_SCRIPT.md](DEMO_SCRIPT.md) for the three-minute journey
@@ -153,7 +152,8 @@ receipt/PDF extraction remain behind an explicit privacy gate:
 - Delivery-app menu writes and dispute submission are not implemented.
 
 `BACKHOUSE_DB`, `STORE_TZ` (default America/New_York), `PORT`, and exact
-`PROFITSHIELD_ORIGIN` configure local execution. `.env` is optional and private;
+`PROFITSHIELD_ORIGIN` configure local execution. The origin must be HTTP on
+`localhost` or `127.0.0.1`; the server binds only to `127.0.0.1`. `.env` is optional and private;
 real environment variables take precedence. Never commit credentials or databases.
 
 ## Checks
